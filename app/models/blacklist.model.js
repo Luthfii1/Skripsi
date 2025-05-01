@@ -11,6 +11,12 @@ const Blacklist = (sequelize, Sequelize) => {
     domain: {
       type: Sequelize.STRING,
     },
+    reason: {
+      type: Sequelize.STRING,
+    },
+    category: {
+      type: Sequelize.ENUM("phishing", "spam", "malware", "suspicious", "porn", "gambling", "other"),
+    },
     hit_count: {
       type: Sequelize.INTEGER,
     },
