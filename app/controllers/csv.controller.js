@@ -1,5 +1,6 @@
 const fs = require("fs");
 const csv = require("fast-csv");
+const { Parser } = require("json2csv");
 const db = require("../config/db.config");
 const Blacklist = db.blacklist;
 
@@ -131,12 +132,14 @@ exports.uploadMultiplefiles = async (req, res) => {
 };
 
 exports.downloadFile = (req, res) => {
-  Blacklist.findAll({ attributes: ["id", "name", "domain", "hit_count"] })
+  Blacklist.findAll({ 
+    attributes: ["id", "name", "domain", "reason", "category", "hit_count"]
+  })
     .then((blacklist) => {
       const jsonBlacklist = JSON.parse(JSON.stringify(blacklist));
-      const csvFields = ["id", "name", "domain", "hit_count"];
-      const csvParser = new json2csv.Parser({ csvFields });
-      const csvData = csvParser.parse(jsonBlacklist);
+      const csvFields = ["id", "name", "domain", "reason", "category", "hit_count"];
+      const parser = new Parser({ fields: csvFields });
+      const csvData = parser.parse(jsonBlacklist);
 
       res.setHeader("Content-Type", "text/csv");
       res.setHeader(

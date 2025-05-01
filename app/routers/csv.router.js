@@ -5,10 +5,10 @@ let upload = require("../middlewares/multer.middlewares.js");
 
 let path = __basedir + "/views/";
 
-router.get("/", (req, res) => {
-  console.log("_basedir" + __basedir);
-  res.sendFile(path + "index.html");
-});
+// router.get("/", (req, res) => {
+//   console.log("_basedir" + __basedir);
+//   res.sendFile(path + "index.html");
+// });
 
 router.post("/csv-upload", upload.single("file"), CsvController.uploadFile);
 router.post(
