@@ -13,6 +13,7 @@ const db = require("./app/config/db.config.js");
 // Import routes and other files here
 const { getHomePage } = require("./app/utils/LandingPage.js");
 const massiveDataRouter = require("./app/routers/csv.router.js");
+const accountRouter = require("./app/routers/account.router.js");
 
 // Serve static files from the public directory
 app.use(express.static("public"));
@@ -38,6 +39,7 @@ db.sequelize.sync({ force: true }).then(() => {
 // Routes used in the application
 app.get("/", getHomePage);
 app.use("/massive-data", massiveDataRouter);
+app.use("/auth", accountRouter);
 
 const port = process.env.PORT || 8080;
 

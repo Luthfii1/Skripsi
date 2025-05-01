@@ -17,6 +17,8 @@ const db = {};
 db.Sequelize = Sequelize;
 db.sequelize = sequelize;
 
+// Import models
 db.blacklist = require("../models/blacklist.model.js")(sequelize, Sequelize);
+db.account = require("../models/account.model.js")(sequelize, Sequelize);
 
 module.exports = db;
