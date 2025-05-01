@@ -13,7 +13,7 @@ router.get("/", (req, res) => {
 router.post("/csv-upload", upload.single("file"), CsvController.uploadFile);
 router.post(
   "/csv-multiple-upload",
-  upload.array("files", 4),
+  upload.array("files", 10),
   CsvController.uploadMultiplefiles
 );
 router.get("/csv-file", CsvController.downloadFile);

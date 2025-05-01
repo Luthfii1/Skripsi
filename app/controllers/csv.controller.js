@@ -70,7 +70,7 @@ exports.uploadFile = (req, res) => {
 };
 
 exports.uploadMultiplefiles = async (req, res) => {
-  const messages = [];
+  const results = [];
 
   for (const file of req.files) {
     try {
@@ -79,50 +79,55 @@ exports.uploadMultiplefiles = async (req, res) => {
         .createReadStream(__basedir + "/uploads/" + file.filename)
         .pipe(csv.parse({ headers: true }));
 
-      var end = new Promise(function (resolve, reject) {
-        let blacklist = [];
-
+      const blacklist = await new Promise((resolve, reject) => {
+        let data = [];
         csvParserStream
           .on("error", (error) => {
             console.error(error);
             reject(error.message);
           })
           .on("data", (row) => {
-            blacklist.push(row);
+            data.push(row);
           })
           .on("end", () => {
-            resolve(blacklist);
+            resolve(data);
           });
       });
 
-      await (async () => {
-        let blacklist = await end;
+      // save blacklist to postgres database
+      await Blacklist.bulkCreate(blacklist);
 
-        // save blacklist to postgres database
-        await Blacklist.bulkCreate(blacklist)
-          .then(() => {
-            res.status(200).send({
-              status: "success",
-              filename: file.originalname,
-              message: "Uploaded the file successfully: " + file.originalname,
-            });
-          })
-          .catch((error) => {
-            res.status(500).send({
-              message: "Fail to import data into database!",
-              error: error.message,
-            });
-          });
-      })();
+      // Delete the CSV file after successful input to the database
+      fs.unlink(__basedir + "/uploads/" + file.filename, (err) => {
+        if (err) {
+          console.error("Error deleting the file:", err);
+        } else {
+          console.log("CSV file deleted successfully:", file.originalname);
+        }
+      });
+
+      results.push({
+        status: "success",
+        filename: file.originalname,
+        message: "Uploaded the file successfully: " + file.originalname,
+      });
     } catch (error) {
       console.error(error);
-      res.status(500).send({
+      results.push({
         status: "fail",
         filename: file.originalname,
         message: "Could not upload the file: " + file.originalname,
+        error: error.message,
       });
     }
   }
+
+  // Send a single response with all results
+  const hasErrors = results.some(result => result.status === "fail");
+  res.status(hasErrors ? 500 : 200).send({
+    status: hasErrors ? "partial" : "success",
+    results: results,
+  });
 };
 
 exports.downloadFile = (req, res) => {
