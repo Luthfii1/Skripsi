@@ -13,22 +13,35 @@ global.__basedir = __dirname;
 
 // Serve static files from the public directory
 app.use(express.static("public"));
+app.use(express.static("resources"));
+
+// Set up the server
+dotenv.config();
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(
+  cors({
+    origin: process.env.CORS_ORIGIN,
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
+  })
+);
 
 // force: true will drop the table if it already exists
 db.sequelize.sync({ force: true }).then(() => {
   console.log("Drop and Resync with { force: true }");
 });
 
+// NOT USE FOR NOW
 // let router = require("./app/routers/csv.router.js");
-app.use(express.static("resources"));
 // app.use("/", router);
+
+// Routes used in the application
 app.get("/", getHomePage);
 // app.use("/massive-data", massiveDataRouter);
 
-// Create a Server
-const server = app.listen(8080, function () {
-  let host = server.address().address;
-  let port = server.address().port;
+const port = process.env.PORT || 8080;
 
-  console.log("App listening at http:///%s:%s", host, port);
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });
