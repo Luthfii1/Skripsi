@@ -1,15 +1,18 @@
+// Set global __basedir first
+global.__basedir = __dirname;
+
 // Import required modules
 const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const app = express();
+
+// Import database configuration
 const db = require("./app/config/db.config.js");
 
 // Import routes and other files here
 const { getHomePage } = require("./app/utils/LandingPage.js");
-// const massiveDataRouter = require("./app/routers/csv.router.js");
-
-global.__basedir = __dirname;
+const massiveDataRouter = require("./app/routers/csv.router.js");
 
 // Serve static files from the public directory
 app.use(express.static("public"));
@@ -32,13 +35,9 @@ db.sequelize.sync({ force: true }).then(() => {
   console.log("Drop and Resync with { force: true }");
 });
 
-// NOT USE FOR NOW
-// let router = require("./app/routers/csv.router.js");
-// app.use("/", router);
-
 // Routes used in the application
 app.get("/", getHomePage);
-// app.use("/massive-data", massiveDataRouter);
+app.use("/massive-data", massiveDataRouter);
 
 const port = process.env.PORT || 8080;
 
