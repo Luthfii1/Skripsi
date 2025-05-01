@@ -9,6 +9,7 @@ const sequelize = new Sequelize({
   username: "postgres",
   password: "postgres",
   database: "massive-data",
+  logging: false
 });
 
 const db = {};
