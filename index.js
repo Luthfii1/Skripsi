@@ -14,6 +14,7 @@ const db = require("./app/config/db.config.js");
 const { getHomePage } = require("./app/utils/LandingPage.js");
 const massiveDataRouter = require("./app/routers/csv.router.js");
 const accountRouter = require("./app/routers/account.router.js");
+const domainRouter = require("./app/routers/domain.router.js");
 
 // Serve static files from the public directory
 app.use(express.static("public"));
@@ -44,6 +45,7 @@ db.sequelize.sync().then(() => {
 app.get("/", getHomePage);
 app.use("/massive-data", massiveDataRouter);
 app.use("/auth", accountRouter);
+app.use("/domains", domainRouter);
 
 const port = process.env.PORT || 8080;
 
