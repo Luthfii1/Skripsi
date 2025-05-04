@@ -1,7 +1,7 @@
 let express = require("express");
 let router = express.Router();
 let CsvController = require("../controllers/csv.controller.js");
-let upload = require("../middlewares/multer.middlewares.js");
+let { upload, handleMulterError } = require("../middlewares/multer.middlewares.js");
 
 let path = __basedir + "/views/";
 
@@ -17,5 +17,8 @@ router.post(
   CsvController.uploadMultiplefiles
 );
 router.get("/csv-file", CsvController.downloadFile);
+
+// Add error handling middleware
+router.use(handleMulterError);
 
 module.exports = router;
