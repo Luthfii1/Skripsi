@@ -34,9 +34,12 @@ app.use(
 
 // force: true will drop the table if it already exists
 db.sequelize.sync().then(() => {
-  // Only force sync the blacklist table
-  db.blacklist.sync({ force: true }).then(() => {
-    console.log("Drop and Resync blacklist table with { force: true }");
+  // Only force sync the blacklist and upload_job tables
+  Promise.all([
+    db.blacklist.sync({ force: true }),
+    db.uploadJob.sync({ force: true })
+  ]).then(() => {
+    console.log("Drop and Resync blacklist and upload_job tables with { force: true }");
   });
   console.log("Database synced successfully");
 });

@@ -3,12 +3,13 @@ const csv = require("fast-csv");
 const { Parser } = require("json2csv");
 const db = require("../config/db.config");
 const Blacklist = db.blacklist;
+const UploadJob = db.uploadJob;
 const sendResponse = require("../utils/Response.utilities");
 const CsvService = require("../services/Csv.service");
+const UploadService = require("../services/Upload.service");
 
 exports.uploadFile = async (req, res) => {
   try {
-    // Check if file exists in request
     if (!req.file) {
       return sendResponse(
         res,
@@ -21,14 +22,38 @@ exports.uploadFile = async (req, res) => {
       );
     }
 
-    const result = await CsvService.processSingleFile(req.file);
-    sendResponse(
-      res,
-      "success",
-      200,
-      "Uploaded the file successfully",
-      result
-    );
+    // Create a new upload job
+    const job = await UploadJob.create({
+      filename: req.file.filename,
+      status: 'pending'
+    });
+
+    // Start processing the file
+    UploadService.processFileInChunks(req.file.path, job.id)
+      .then(result => {
+        sendResponse(
+          res,
+          "success",
+          200,
+          "File upload started successfully",
+          {
+            jobId: job.id,
+            message: "File is being processed in the background"
+          }
+        );
+      })
+      .catch(error => {
+        console.error('Error processing file:', error);
+        sendResponse(
+          res,
+          "error",
+          500,
+          "Error processing file",
+          null,
+          "ProcessingError",
+          error.message
+        );
+      });
   } catch (error) {
     console.error(error);
     sendResponse(
@@ -43,9 +68,8 @@ exports.uploadFile = async (req, res) => {
   }
 };
 
-exports.uploadMultiplefiles = async (req, res) => {
+exports.uploadMultipleFiles = async (req, res) => {
   try {
-    // Check if files exist in request
     if (!req.files || req.files.length === 0) {
       return sendResponse(
         res,
@@ -58,8 +82,8 @@ exports.uploadMultiplefiles = async (req, res) => {
       );
     }
 
-    const results = await CsvService.processMultipleFiles(req.files);
-    const hasErrors = results.some(result => result.status === "fail");
+    const results = await UploadService.processMultipleFiles(req.files);
+    const hasErrors = results.some(result => result.status === 'fail');
 
     sendResponse(
       res,
@@ -77,6 +101,73 @@ exports.uploadMultiplefiles = async (req, res) => {
       "Could not upload the files",
       null,
       "UploadError",
+      error.message
+    );
+  }
+};
+
+exports.getUploadStatus = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const job = await UploadService.getJobStatus(jobId);
+    
+    if (!job) {
+      return sendResponse(
+        res,
+        "error",
+        404,
+        "Upload job not found",
+        null,
+        "NotFoundError",
+        "The specified upload job does not exist"
+      );
+    }
+
+    sendResponse(
+      res,
+      "success",
+      200,
+      "Upload status retrieved successfully",
+      job
+    );
+  } catch (error) {
+    console.error(error);
+    sendResponse(
+      res,
+      "error",
+      500,
+      "Could not retrieve upload status",
+      null,
+      "ServerError",
+      error.message
+    );
+  }
+};
+
+exports.retryUpload = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    await UploadService.retryFailedJob(jobId);
+    
+    sendResponse(
+      res,
+      "success",
+      200,
+      "Upload retry started successfully",
+      {
+        jobId,
+        message: "File is being reprocessed in the background"
+      }
+    );
+  } catch (error) {
+    console.error(error);
+    sendResponse(
+      res,
+      "error",
+      500,
+      "Could not retry upload",
+      null,
+      "RetryError",
       error.message
     );
   }

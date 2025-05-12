@@ -1,7 +1,7 @@
 let express = require("express");
 let router = express.Router();
 let CsvController = require("../controllers/csv.controller.js");
-let { upload, handleMulterError } = require("../middlewares/multer.middlewares.js");
+let { upload, handleMulterError, checkTotalSize } = require("../middlewares/multer.middlewares.js");
 
 let path = __basedir + "/views/";
 
@@ -10,12 +10,24 @@ let path = __basedir + "/views/";
 //   res.sendFile(path + "index.html");
 // });
 
+// Upload single file
 router.post("/csv-upload", upload.single("file"), CsvController.uploadFile);
+
+// Upload multiple files
 router.post(
   "/csv-multiple-upload",
   upload.array("files", 10),
-  CsvController.uploadMultiplefiles
+  checkTotalSize,
+  CsvController.uploadMultipleFiles
 );
+
+// Get upload status
+router.get("/status/:jobId", CsvController.getUploadStatus);
+
+// Retry failed upload
+router.post("/retry/:jobId", CsvController.retryUpload);
+
+// Download file
 router.get("/csv-file", CsvController.downloadFile);
 
 // Add error handling middleware
