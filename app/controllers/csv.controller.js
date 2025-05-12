@@ -28,32 +28,25 @@ exports.uploadFile = async (req, res) => {
       status: 'pending'
     });
 
-    // Start processing the file
-    UploadService.processFileInChunks(req.file.path, job.id)
-      .then(result => {
-        sendResponse(
-          res,
-          "success",
-          200,
-          "File upload started successfully",
-          {
-            jobId: job.id,
-            message: "File is being processed in the background"
-          }
-        );
-      })
-      .catch(error => {
-        console.error('Error processing file:', error);
-        sendResponse(
-          res,
-          "error",
-          500,
-          "Error processing file",
-          null,
-          "ProcessingError",
-          error.message
-        );
-      });
+    // Immediately respond to the client
+    sendResponse(
+      res,
+      "success",
+      200,
+      "File upload started successfully",
+      {
+        jobId: job.id,
+        message: "File is being processed in the background"
+      }
+    );
+
+    // Process the file in the background
+    setImmediate(() => {
+      UploadService.processFileInChunks(req.file.path, job.id)
+        .catch(error => {
+          console.error('Error processing file:', error);
+        });
+    });
   } catch (error) {
     console.error(error);
     sendResponse(
@@ -82,16 +75,24 @@ exports.uploadMultipleFiles = async (req, res) => {
       );
     }
 
-    const results = await UploadService.processMultipleFiles(req.files);
-    const hasErrors = results.some(result => result.status === 'fail');
-
+    // Immediately respond to the client
     sendResponse(
       res,
-      hasErrors ? "partial" : "success",
-      hasErrors ? 500 : 200,
-      hasErrors ? "Some files failed to upload" : "All files uploaded successfully",
-      { results }
+      "success",
+      200,
+      "Multiple file upload started successfully",
+      {
+        message: "Files are being processed in the background"
+      }
     );
+
+    // Process the files in the background
+    setImmediate(() => {
+      UploadService.processMultipleFiles(req.files)
+        .catch(error => {
+          console.error('Error processing multiple files:', error);
+        });
+    });
   } catch (error) {
     console.error(error);
     sendResponse(

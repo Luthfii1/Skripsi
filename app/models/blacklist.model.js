@@ -1,26 +1,32 @@
-const Blacklist = (sequelize, Sequelize) => {
-  return sequelize.define("blacklist", {
+module.exports = (sequelize, Sequelize) => {
+  const Blacklist = sequelize.define("blacklist", {
     id: {
       type: Sequelize.INTEGER,
       primaryKey: true,
-      autoIncrement: true,
+      autoIncrement: true
     },
     name: {
       type: Sequelize.STRING,
+      allowNull: false
     },
     domain: {
       type: Sequelize.STRING,
+      allowNull: false,
+      unique: true
     },
     reason: {
-      type: Sequelize.STRING,
+      type: Sequelize.TEXT,
+      allowNull: false
     },
     category: {
-      type: Sequelize.ENUM("phishing", "spam", "malware", "suspicious", "porn", "gambling", "other"),
+      type: Sequelize.STRING,
+      allowNull: false
     },
     hit_count: {
       type: Sequelize.INTEGER,
-    },
+      defaultValue: 0
+    }
   });
-};
 
-module.exports = Blacklist;
+  return Blacklist;
+};
