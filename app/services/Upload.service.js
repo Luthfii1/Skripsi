@@ -59,15 +59,29 @@ class UploadService {
           console.log(`[INFO] Found ${chunkDuplicates} duplicate domains in chunk`);
         }
         
+        // Count all records as processed
+        processedRecords += chunk.length;
+        
         if (newRecords.length > 0) {
-          await db.blacklist.bulkCreate(newRecords, {
-            ignoreDuplicates: true
-          });
-          processedRecords += newRecords.length;
-          uniqueCount += newRecords.length;
+          // Process each record individually
+          for (const record of newRecords) {
+            try {
+              await db.blacklist.create(record);
+              uniqueCount++;
+            } catch (error) {
+              if (error.name === 'SequelizeUniqueConstraintError') {
+                duplicateCount++;
+              } else {
+                console.error(`[ERROR] Error inserting record: ${error.message}`);
+                throw error;
+              }
+            }
+          }
+          
           console.log(`[INFO] Successfully processed ${newRecords.length} new records`);
         }
         
+        // Update job status after each chunk
         await job.update({
           processed_records: processedRecords,
           unique_domains: uniqueCount,
@@ -75,6 +89,11 @@ class UploadService {
         });
       }
 
+      // Verify final count
+      const finalCount = await db.blacklist.count();
+      console.log(`[INFO] Final database count: ${finalCount}`);
+
+      // Update final job status
       await job.update({
         status: "completed",
         processed_records: processedRecords,
