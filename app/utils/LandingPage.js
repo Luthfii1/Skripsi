@@ -152,6 +152,226 @@ const getHomePage = (req, res) => {
           </html>
       `;
     res.send(htmlResponse);
-  };
-  
-  module.exports = { getHomePage };
+};
+
+const getSocketTestPage = (req, res) => {
+    const htmlResponse = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>NetPro - Socket.IO Test</title>
+        <link rel="icon" href="/images/favicon.ico" type="image/x-icon">
+        <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            }
+
+            body {
+                min-height: 100vh;
+                background: linear-gradient(to bottom right, #EBF8FF, #BEE3F8);
+                padding: 2rem;
+            }
+
+            .container {
+                max-width: 1000px;
+                margin: 0 auto;
+                background: white;
+                border-radius: 1rem;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                overflow: hidden;
+            }
+
+            .header {
+                background: linear-gradient(to right, #2B6CB0, #2C5282);
+                color: white;
+                padding: 2rem;
+                text-align: center;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+                margin-bottom: 0.5rem;
+            }
+
+            .header p {
+                opacity: 0.9;
+            }
+
+            .content {
+                padding: 2rem;
+            }
+
+            .status-container {
+                background: #F7FAFC;
+                border-radius: 0.5rem;
+                padding: 1rem;
+                margin-bottom: 1rem;
+                display: flex;
+                align-items: center;
+                gap: 1rem;
+            }
+
+            .status-indicator {
+                width: 12px;
+                height: 12px;
+                border-radius: 50%;
+                background: #E53E3E;
+            }
+
+            .status-indicator.connected {
+                background: #48BB78;
+            }
+
+            .messages-container {
+                background: #F7FAFC;
+                border-radius: 0.5rem;
+                padding: 1rem;
+                max-height: 400px;
+                overflow-y: auto;
+            }
+
+            .message {
+                background: white;
+                padding: 1rem;
+                border-radius: 0.5rem;
+                margin-bottom: 0.5rem;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            }
+
+            .message:last-child {
+                margin-bottom: 0;
+            }
+
+            .progress-bar {
+                width: 100%;
+                height: 4px;
+                background: #E2E8F0;
+                border-radius: 2px;
+                margin-top: 0.5rem;
+                overflow: hidden;
+            }
+
+            .progress-bar-fill {
+                height: 100%;
+                background: #4299E1;
+                width: 0%;
+                transition: width 0.3s ease;
+            }
+
+            .stats {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 1rem;
+                margin-top: 1rem;
+            }
+
+            .stat-card {
+                background: white;
+                padding: 1rem;
+                border-radius: 0.5rem;
+                text-align: center;
+            }
+
+            .stat-card h3 {
+                color: #4A5568;
+                font-size: 0.875rem;
+                margin-bottom: 0.5rem;
+            }
+
+            .stat-card p {
+                color: #2B6CB0;
+                font-size: 1.5rem;
+                font-weight: 600;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>NetPro Socket.IO Test</h1>
+                <p>Real-time upload progress monitoring</p>
+            </div>
+            <div class="content">
+                <div class="status-container">
+                    <div id="status-indicator" class="status-indicator"></div>
+                    <div id="status-text">Connecting to server...</div>
+                </div>
+                <div class="messages-container" id="messages"></div>
+            </div>
+        </div>
+
+        <script>
+            const socket = io('http://localhost:8080');
+            const statusIndicator = document.getElementById('status-indicator');
+            const statusText = document.getElementById('status-text');
+            const messagesDiv = document.getElementById('messages');
+
+            socket.on('connect', () => {
+                statusIndicator.classList.add('connected');
+                statusText.textContent = 'Connected to server';
+                console.log('Connected to server');
+            });
+
+            socket.on('disconnect', () => {
+                statusIndicator.classList.remove('connected');
+                statusText.textContent = 'Disconnected from server';
+                console.log('Disconnected from server');
+            });
+
+            socket.on('uploadProgress', (data) => {
+                const message = document.createElement('div');
+                message.className = 'message';
+                
+                const progress = data.progress.toFixed(2);
+                const stats = \`
+                    <div class="stats">
+                        <div class="stat-card">
+                            <h3>Progress</h3>
+                            <p>\${progress}%</p>
+                            <div class="progress-bar">
+                                <div class="progress-bar-fill" style="width: \${progress}%"></div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Processed Records</h3>
+                            <p>\${data.processedRecords} / \${data.totalRecords}</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Unique Domains</h3>
+                            <p>\${data.uniqueDomains}</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Duplicate Domains</h3>
+                            <p>\${data.duplicateDomains}</p>
+                        </div>
+                    </div>
+                \`;
+                
+                message.innerHTML = stats;
+                messagesDiv.appendChild(message);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                console.log('Upload Progress:', data);
+            });
+
+            socket.on('test', (data) => {
+                const message = document.createElement('div');
+                message.className = 'message';
+                message.textContent = \`Test message: \${data}\`;
+                messagesDiv.appendChild(message);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                console.log('Test message:', data);
+            });
+        </script>
+    </body>
+    </html>
+    `;
+    res.send(htmlResponse);
+};
+
+module.exports = { getHomePage, getSocketTestPage };

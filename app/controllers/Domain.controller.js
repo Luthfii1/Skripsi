@@ -1,5 +1,5 @@
 const sendResponse = require("../utils/Response.utilities");
-const DomainService = require("../services/Domain.service");
+const DomainService = require("../services/domain.service");
 
 exports.getDomains = async (req, res) => {
   try {

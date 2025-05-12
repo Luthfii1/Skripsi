@@ -21,12 +21,6 @@ router.post(
   CsvController.uploadMultipleFiles
 );
 
-// Get upload status
-router.get("/status/:jobId", CsvController.getUploadStatus);
-
-// Retry failed upload
-router.post("/retry/:jobId", CsvController.retryUpload);
-
 // Download file
 router.get("/csv-file", CsvController.downloadFile);
 

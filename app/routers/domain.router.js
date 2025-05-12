@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const DomainController = require('../controllers/Domain.controller');
+const DomainController = require('../controllers/domain.controller');
 
 // Get domains with pagination and search
 router.get('/', DomainController.getDomains);

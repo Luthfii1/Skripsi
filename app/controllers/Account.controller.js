@@ -1,5 +1,5 @@
 const sendResponse = require('../utils/Response.utilities');
-const AccountService = require('../services/Account.service');
+const AccountService = require('../services/account.service');
 
 exports.register = async (req, res) => {
   try {

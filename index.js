@@ -6,15 +6,44 @@ const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const app = express();
+const http = require('http');
+const { Server } = require("socket.io");
 
 // Import database configuration
 const db = require("./app/config/db.config.js");
 
+// Create HTTP server
+const server = http.createServer(app);
+
+// Initialize Socket.IO
+const io = new Server(server, {
+  cors: {
+    origin: process.env.CORS_ORIGIN,
+    methods: ["GET", "POST"],
+    credentials: true
+  }
+});
+
+// Make io accessible globally
+global.io = io;
+
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+  console.log('Client connected:', socket.id);
+
+  socket.emit('test', 'Connected');
+
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
+});
+
 // Import routes and other files here
-const { getHomePage } = require("./app/utils/LandingPage.js");
+const { getHomePage, getSocketTestPage } = require("./app/utils/LandingPage.js");
 const massiveDataRouter = require("./app/routers/csv.router.js");
 const accountRouter = require("./app/routers/account.router.js");
 const domainRouter = require("./app/routers/domain.router.js");
+const jobRouter = require("./app/routers/job.router.js");
 
 // Serve static files from the public directory
 app.use(express.static("public"));
@@ -46,12 +75,14 @@ db.sequelize.sync().then(() => {
 
 // Routes used in the application
 app.get("/", getHomePage);
+app.get("/testSocket", getSocketTestPage);
 app.use("/massive-data", massiveDataRouter);
 app.use("/auth", accountRouter);
 app.use("/domains", domainRouter);
+app.use("/jobs", jobRouter);
 
 const port = process.env.PORT || 8080;
 
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
