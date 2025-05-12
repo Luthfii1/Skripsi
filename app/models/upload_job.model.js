@@ -31,6 +31,11 @@ const UploadJob = (sequelize, Sequelize) => {
       defaultValue: 0,
       comment: 'Number of duplicate domains skipped'
     },
+    processing_time: {
+      type: Sequelize.FLOAT,
+      defaultValue: 0,
+      comment: 'Time taken to process the file in seconds'
+    },
     error_message: {
       type: Sequelize.TEXT,
       allowNull: true,

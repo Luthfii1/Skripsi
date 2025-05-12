@@ -3,7 +3,7 @@ const csv = require("fast-csv");
 const db = require("../config/db.config");
 const { Op } = require("sequelize");
 
-const CHUNK_SIZE = 1000;
+const CHUNK_SIZE = 100000;
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 2000;
 const BATCH_DELAY = 1000;
@@ -15,6 +15,8 @@ class UploadService {
     console.log(`[INFO] Starting file processing: ${filePath}`);
     const job = await db.uploadJob.findByPk(jobId);
     if (!job) throw new Error("Job not found");
+
+    const startTime = Date.now();
 
     try {
       // Read all records first
@@ -93,12 +95,17 @@ class UploadService {
       const finalCount = await db.blacklist.count();
       console.log(`[INFO] Final database count: ${finalCount}`);
 
+      // Calculate processing time in seconds
+      const endTime = Date.now();
+      const processingTime = (endTime - startTime) / 1000; // Convert to seconds
+
       // Update final job status
       await job.update({
         status: "completed",
         processed_records: processedRecords,
         unique_domains: uniqueCount,
         duplicate_domains: duplicateCount,
+        processing_time: processingTime,
         error_message: duplicateCount > 0 ? `Skipped ${duplicateCount} duplicate records` : null
       });
 
@@ -106,6 +113,7 @@ class UploadService {
       console.log(`[INFO] Total records processed: ${processedRecords}`);
       console.log(`[INFO] Unique domains stored: ${uniqueCount}`);
       console.log(`[INFO] Duplicate records skipped: ${duplicateCount}`);
+      console.log(`[INFO] Processing time: ${processingTime.toFixed(2)} seconds`);
 
     } catch (error) {
       console.error(`[ERROR] Final Processing Error: ${error.message}`);
