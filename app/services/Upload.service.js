@@ -3,7 +3,7 @@ const csv = require("fast-csv");
 const db = require("../config/db.config");
 const { Op } = require("sequelize");
 
-const CHUNK_SIZE = 100000;
+const CHUNK_SIZE = 10000;
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 2000;
 const BATCH_DELAY = 1000;
