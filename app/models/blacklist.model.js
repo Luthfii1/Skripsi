@@ -16,11 +16,12 @@ module.exports = (sequelize, Sequelize) => {
     },
     reason: {
       type: Sequelize.TEXT,
-      allowNull: false
+      allowNull: true
     },
     category: {
       type: Sequelize.STRING,
-      allowNull: false
+      allowNull: false,
+      defaultValue: "other"
     },
     hit_count: {
       type: Sequelize.INTEGER,
