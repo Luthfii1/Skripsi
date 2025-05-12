@@ -35,6 +35,7 @@ class UploadService {
 
       let processedRecords = 0;
       let duplicateCount = 0;
+      let uniqueCount = 0;
 
       // Process in chunks
       for (let i = 0; i < records.length; i += CHUNK_SIZE) {
@@ -63,22 +64,28 @@ class UploadService {
             ignoreDuplicates: true
           });
           processedRecords += newRecords.length;
+          uniqueCount += newRecords.length;
           console.log(`[INFO] Successfully processed ${newRecords.length} new records`);
         }
         
         await job.update({
-          processed_records: processedRecords
+          processed_records: processedRecords,
+          unique_domains: uniqueCount,
+          duplicate_domains: duplicateCount
         });
       }
 
       await job.update({
         status: "completed",
         processed_records: processedRecords,
+        unique_domains: uniqueCount,
+        duplicate_domains: duplicateCount,
         error_message: duplicateCount > 0 ? `Skipped ${duplicateCount} duplicate records` : null
       });
 
       console.log(`[INFO] File processing completed: ${filePath}`);
       console.log(`[INFO] Total records processed: ${processedRecords}`);
+      console.log(`[INFO] Unique domains stored: ${uniqueCount}`);
       console.log(`[INFO] Duplicate records skipped: ${duplicateCount}`);
 
     } catch (error) {

@@ -21,6 +21,16 @@ const UploadJob = (sequelize, Sequelize) => {
       type: Sequelize.INTEGER,
       defaultValue: 0,
     },
+    unique_domains: {
+      type: Sequelize.INTEGER,
+      defaultValue: 0,
+      comment: 'Number of unique domains successfully stored'
+    },
+    duplicate_domains: {
+      type: Sequelize.INTEGER,
+      defaultValue: 0,
+      comment: 'Number of duplicate domains skipped'
+    },
     error_message: {
       type: Sequelize.TEXT,
       allowNull: true,
@@ -32,15 +42,12 @@ const UploadJob = (sequelize, Sequelize) => {
     last_retry_at: {
       type: Sequelize.DATE,
       allowNull: true,
-    },
-    created_at: {
-      type: Sequelize.DATE,
-      defaultValue: Sequelize.NOW,
-    },
-    updated_at: {
-      type: Sequelize.DATE,
-      defaultValue: Sequelize.NOW,
     }
+  }, {
+    timestamps: true,
+    underscored: false, // This will use camelCase for timestamps
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt'
   });
 };
 
