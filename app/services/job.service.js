@@ -15,7 +15,7 @@ class UploadService {
     // No need to pass io in constructor anymore
   }
 
-  async processChunkWithRetry(chunk, initialCount, jobId, startTime, totalRecords, processedRecords) {
+  async processChunkWithRetry(chunk, jobId, startTime, totalRecords, processedRecords, initialCount) {
     let retries = 0;
     while (retries < MAX_RETRIES) {
       const transaction = await db.sequelize.transaction({
@@ -23,7 +23,7 @@ class UploadService {
       });
 
       try {
-        // Get existing domains within transaction
+        // Get ALL existing domains within transaction
         const domains = chunk.map(record => record.domain);
         const existingRecords = await db.blacklist.findAll({
           where: { domain: { [Op.in]: domains } },
@@ -34,7 +34,6 @@ class UploadService {
 
         // Filter out duplicates
         const newRecords = chunk.filter(record => !existingDomains.has(record.domain));
-        const duplicateCount = chunk.length - newRecords.length;
         
         if (newRecords.length > 0) {
           // Insert new records with transaction
@@ -107,7 +106,6 @@ class UploadService {
     console.log("[INFO] Starting file processing:", filePath);
     let totalRecords = 0;
     let processedRecords = 0;
-    let totalDuplicates = 0;
     const startTime = Date.now();
 
     try {
@@ -123,7 +121,7 @@ class UploadService {
           .on("error", reject);
       });
 
-      // Get initial count
+      // Get initial count for this job
       const initialCount = await db.blacklist.count();
       console.log("[INFO] Initial blacklist count:", initialCount);
 
@@ -152,15 +150,14 @@ class UploadService {
         try {
           const result = await this.processChunkWithRetry(
             chunk,
-            initialCount,
             jobId,
             startTime,
             totalRecords,
-            processedRecords
+            processedRecords,
+            initialCount
           );
           
           processedRecords = result.processedRecords;
-          totalDuplicates = result.duplicateDomains;
           
           // Add delay between chunks
           await sleep(BATCH_DELAY);
@@ -173,20 +170,23 @@ class UploadService {
 
       // Get final counts
       const finalCount = await db.blacklist.count();
-      const finalUniqueDomains = finalCount - initialCount;
-      const finalDuplicateDomains = totalRecords - finalUniqueDomains;
+      const uniqueDomains = finalCount - initialCount;
+      const duplicateDomains = totalRecords - uniqueDomains;
 
+      console.log("[INFO] Processing complete:");
       console.log("[INFO] Initial blacklist count:", initialCount);
       console.log("[INFO] Final blacklist count:", finalCount);
-      console.log("[INFO] Unique domains inserted:", finalUniqueDomains);
-      console.log("[INFO] Duplicate domains skipped:", finalDuplicateDomains);
+      console.log("[INFO] Total records processed:", processedRecords);
+      console.log("[INFO] Unique domains inserted:", uniqueDomains);
+      console.log("[INFO] Duplicate domains skipped:", duplicateDomains);
+      console.log("[INFO] Actual new domains in database:", finalCount - initialCount);
 
       // Prepare completion message
       let completionMessage = `Successfully processed ${totalRecords} records | `;
-      if (finalDuplicateDomains > 0) {
-        completionMessage += `${finalDuplicateDomains} duplicate domains were skipped | `;
+      if (duplicateDomains > 0) {
+        completionMessage += `${duplicateDomains} duplicate domains were skipped | `;
       }
-      completionMessage += `${finalUniqueDomains} new domains were added to the database`;
+      completionMessage += `${uniqueDomains} new domains were added to the database`;
 
       // Final update
       const finalProcessingTime = (Date.now() - startTime) / 1000;
@@ -196,8 +196,8 @@ class UploadService {
           processing_time: finalProcessingTime,
           total_records: totalRecords,
           processed_records: processedRecords,
-          unique_domains: finalUniqueDomains,
-          duplicate_domains: finalDuplicateDomains,
+          unique_domains: uniqueDomains,
+          duplicate_domains: duplicateDomains,
           error_message: completionMessage
         },
         { where: { id: jobId } }
