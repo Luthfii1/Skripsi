@@ -2,6 +2,7 @@ const fs = require("fs");
 const csv = require("fast-csv");
 const db = require("../config/db.config");
 const { Op, Transaction } = require("sequelize");
+const readline = require('readline');
 
 const CHUNK_SIZE = 10000;
 const MAX_RETRIES = 3;
@@ -15,6 +16,135 @@ class UploadService {
     // No need to pass io in constructor anymore
   }
 
+  async findHeaderLine(filePath) {
+    return new Promise((resolve, reject) => {
+      const rl = readline.createInterface({
+        input: fs.createReadStream(filePath),
+        crlfDelay: Infinity
+      });
+
+      let lineNumber = 0;
+      let headerLine = 0;
+      let maxColumns = 0;
+      let headerColumns = [];
+      let allLines = [];
+
+      rl.on('line', (line) => {
+        lineNumber++;
+        const columns = line.split(',').length;
+        allLines.push({ lineNumber, line, columns });
+        
+        // Update max columns if this line has more columns
+        if (columns > maxColumns) {
+          maxColumns = columns;
+        }
+      });
+
+      rl.on('close', () => {
+        // Find the line with the most columns that contains header indicators
+        const headerLineInfo = allLines.find(({ line, columns }) => 
+          columns === maxColumns && (
+            line.toLowerCase().includes('domain') || 
+            line.toLowerCase().includes('url') || 
+            line.toLowerCase().includes('website')
+          )
+        );
+
+        if (headerLineInfo) {
+          headerLine = headerLineInfo.lineNumber;
+          headerColumns = headerLineInfo.line.split(',').map(col => col.trim());
+        } else {
+          // If no suitable header found, use the line with the most columns
+          const maxLine = allLines.find(({ columns }) => columns === maxColumns);
+          headerLine = maxLine ? maxLine.lineNumber : 1;
+          headerColumns = Array.from({ length: maxColumns }, (_, i) => `column${i + 1}`);
+        }
+
+        console.log(`[INFO] Found header at line ${headerLine} with ${maxColumns} columns`);
+        console.log(`[INFO] Headers:`, headerColumns);
+        resolve({ headerLine, maxColumns, headerColumns });
+      });
+
+      rl.on('error', (error) => {
+        reject(error);
+      });
+    });
+  }
+
+  async validateAndParseCSV(filePath) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        // Find the header line and column count
+        const { headerLine, maxColumns, headerColumns } = await this.findHeaderLine(filePath);
+        const records = [];
+
+        fs.createReadStream(filePath)
+          .pipe(csv.parse({ 
+            headers: headerColumns,
+            skipRows: headerLine - 1,
+            strictColumnHandling: false,
+            trim: true,
+            skipEmptyLines: true,
+            ignoreEmpty: true,
+            maxRows: 0, // No limit on rows
+            transform: (row) => {
+              // Ensure all rows have the same number of columns
+              const columns = Object.keys(row).length;
+              if (columns < maxColumns) {
+                // Pad missing columns with empty values
+                for (let i = columns; i < maxColumns; i++) {
+                  row[`column${i + 1}`] = '';
+                }
+              } else if (columns > maxColumns) {
+                // Truncate extra columns
+                const newRow = {};
+                headerColumns.forEach((header, index) => {
+                  newRow[header] = row[header] || '';
+                });
+                return newRow;
+              }
+              return row;
+            }
+          }))
+          .on('headers', (headers) => {
+            console.log("[INFO] Using headers:", headers);
+          })
+          .on('data', (data) => {
+            // If domain is not in the first column, try to find it
+            if (!data.domain) {
+              const domainKey = Object.keys(data).find(key => 
+                key.toLowerCase().includes('domain') || 
+                key.toLowerCase().includes('url') ||
+                key.toLowerCase().includes('website')
+              );
+              if (domainKey) {
+                data.domain = data[domainKey];
+              } else {
+                // If no domain column found, use the first non-empty column
+                const firstValue = Object.values(data).find(val => val && val.trim() !== '');
+                if (firstValue) {
+                  data.domain = firstValue;
+                }
+              }
+            }
+            if (data.domain) {
+              records.push(data);
+            }
+          })
+          .on('end', () => {
+            console.log("[INFO] Successfully parsed CSV file");
+            resolve(records);
+          })
+          .on('error', (error) => {
+            console.error("[ERROR] CSV Parsing Error:", error);
+            reject(new Error(`CSV parsing error: ${error.message}`));
+          });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
   async processChunkWithRetry(chunk, jobId, startTime, totalRecords, processedRecords, initialCount) {
     let retries = 0;
     while (retries < MAX_RETRIES) {
@@ -24,7 +154,13 @@ class UploadService {
 
       try {
         // Get ALL existing domains within transaction
-        const domains = chunk.map(record => record.domain);
+        const domains = chunk.map(record => record.domain).filter(Boolean);
+        if (domains.length === 0) {
+          console.log("[WARN] No valid domains found in chunk");
+          await transaction.commit();
+          return { processedRecords, uniqueDomains: 0, duplicateDomains: chunk.length };
+        }
+
         const existingRecords = await db.blacklist.findAll({
           where: { domain: { [Op.in]: domains } },
           transaction,
@@ -33,7 +169,7 @@ class UploadService {
         const existingDomains = new Set(existingRecords.map(r => r.domain));
 
         // Filter out duplicates
-        const newRecords = chunk.filter(record => !existingDomains.has(record.domain));
+        const newRecords = chunk.filter(record => record.domain && !existingDomains.has(record.domain));
         
         if (newRecords.length > 0) {
           // Insert new records with transaction
@@ -109,17 +245,10 @@ class UploadService {
     const startTime = Date.now();
 
     try {
-      // First pass: count total records
-      await new Promise((resolve, reject) => {
-        fs.createReadStream(filePath)
-          .pipe(csv.parse({ headers: true }))
-          .on("data", () => totalRecords++)
-          .on("end", () => {
-            console.log("[INFO] Total records in file:", totalRecords);
-            resolve();
-          })
-          .on("error", reject);
-      });
+      // Parse CSV file
+      const records = await this.validateAndParseCSV(filePath);
+      totalRecords = records.length;
+      console.log("[INFO] Total records in file:", totalRecords);
 
       // Get initial count for this job
       const initialCount = await db.blacklist.count();
@@ -130,18 +259,6 @@ class UploadService {
         { total_records: totalRecords },
         { where: { id: jobId } }
       );
-
-      // Second pass: process records
-      const records = [];
-      await new Promise((resolve, reject) => {
-        fs.createReadStream(filePath)
-          .pipe(csv.parse({ headers: true }))
-          .on("data", (data) => {
-            records.push(data);
-          })
-          .on("end", resolve)
-          .on("error", reject);
-      });
 
       // Process in chunks
       for (let i = 0; i < records.length; i += CHUNK_SIZE) {

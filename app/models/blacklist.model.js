@@ -7,7 +7,8 @@ module.exports = (sequelize, Sequelize) => {
     },
     name: {
       type: Sequelize.STRING,
-      allowNull: false
+      allowNull: false,
+      defaultValue: "empty name"
     },
     domain: {
       type: Sequelize.STRING,
