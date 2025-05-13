@@ -1,12 +1,12 @@
 const fs = require("fs");
 const csv = require("fast-csv");
 const db = require("../config/db.config");
-const { Op } = require("sequelize");
+const { Op, Transaction } = require("sequelize");
 
 const CHUNK_SIZE = 10000;
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 2000;
-const BATCH_DELAY = 1000;
+const BATCH_DELAY = 2000;
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -15,10 +15,99 @@ class UploadService {
     // No need to pass io in constructor anymore
   }
 
+  async processChunkWithRetry(chunk, initialCount, jobId, startTime, totalRecords, processedRecords) {
+    let retries = 0;
+    while (retries < MAX_RETRIES) {
+      const transaction = await db.sequelize.transaction({
+        isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED
+      });
+
+      try {
+        // Get existing domains within transaction
+        const domains = chunk.map(record => record.domain);
+        const existingRecords = await db.blacklist.findAll({
+          where: { domain: { [Op.in]: domains } },
+          transaction,
+          lock: transaction.LOCK.UPDATE
+        });
+        const existingDomains = new Set(existingRecords.map(r => r.domain));
+
+        // Filter out duplicates
+        const newRecords = chunk.filter(record => !existingDomains.has(record.domain));
+        const duplicateCount = chunk.length - newRecords.length;
+        
+        if (newRecords.length > 0) {
+          // Insert new records with transaction
+          await db.blacklist.bulkCreate(newRecords, {
+            transaction,
+            ignoreDuplicates: true
+          });
+        }
+
+        // Commit transaction
+        await transaction.commit();
+
+        // Update processed records
+        processedRecords += chunk.length;
+
+        // Get current database state
+        const currentCount = await db.blacklist.count();
+        const uniqueDomains = currentCount - initialCount;
+        const duplicateDomains = processedRecords - uniqueDomains;
+
+        // Update job status
+        const progress = (processedRecords / totalRecords) * 100;
+        const processingTime = (Date.now() - startTime) / 1000;
+        
+        await db.uploadJob.update(
+          {
+            processed_records: processedRecords,
+            unique_domains: uniqueDomains,
+            duplicate_domains: duplicateDomains,
+            processing_time: processingTime,
+            status: processedRecords === totalRecords ? 'completed' : 'processing'
+          },
+          { where: { id: jobId } }
+        );
+
+        // Emit progress update using global io
+        if (global.io) {
+          console.log("[INFO] Emitting progress update:", progress);
+          global.io.emit('uploadProgress', {
+            jobId,
+            progress,
+            processedRecords,
+            totalRecords,
+            uniqueDomains,
+            duplicateDomains,
+            processingTime
+          });
+        }
+
+        return { processedRecords, uniqueDomains, duplicateDomains };
+
+      } catch (error) {
+        await transaction.rollback();
+        
+        if (error.name === 'SequelizeDatabaseError' && error.parent?.code === '40P01') {
+          retries++;
+          console.log(`[WARN] Deadlock detected, retrying chunk (attempt ${retries}/${MAX_RETRIES})`);
+          await sleep(RETRY_DELAY * retries); // Exponential backoff
+          continue;
+        }
+        
+        throw error;
+      }
+    }
+    
+    throw new Error(`Failed to process chunk after ${MAX_RETRIES} retries due to deadlocks`);
+  }
+
   async processFileInChunks(filePath, jobId) {
     console.log("[INFO] Starting file processing:", filePath);
     let totalRecords = 0;
     let processedRecords = 0;
+    let totalDuplicates = 0;
     const startTime = Date.now();
 
     try {
@@ -60,58 +149,25 @@ class UploadService {
       for (let i = 0; i < records.length; i += CHUNK_SIZE) {
         const chunk = records.slice(i, i + CHUNK_SIZE);
         
-        // Get existing domains
-        const domains = chunk.map(record => record.domain);
-        const existingRecords = await db.blacklist.findAll({
-          where: { domain: { [Op.in]: domains } }
-        });
-        const existingDomains = new Set(existingRecords.map(r => r.domain));
-
-        // Filter out duplicates
-        const newRecords = chunk.filter(record => !existingDomains.has(record.domain));
-        
-        if (newRecords.length > 0) {
-          await db.blacklist.bulkCreate(newRecords, {
-            ignoreDuplicates: true
-          });
-        }
-
-        // Update processed records
-        processedRecords += chunk.length;
-
-        // Get current database state
-        const currentCount = await db.blacklist.count();
-        const uniqueDomains = currentCount - initialCount;
-        const duplicateDomains = processedRecords - uniqueDomains;
-
-        // Update job status
-        const progress = (processedRecords / totalRecords) * 100;
-        const processingTime = (Date.now() - startTime) / 1000;
-        
-        await db.uploadJob.update(
-          {
-            processed_records: processedRecords,
-            unique_domains: uniqueDomains,
-            duplicate_domains: duplicateDomains,
-            processing_time: processingTime,
-            status: processedRecords === totalRecords ? 'completed' : 'processing'
-          },
-          { where: { id: jobId } }
-        );
-
-        // Emit progress update using global io
-        if (global.io) {
-          global.io.emit('uploadProgress', {
+        try {
+          const result = await this.processChunkWithRetry(
+            chunk,
+            initialCount,
             jobId,
-            progress,
-            processedRecords,
+            startTime,
             totalRecords,
-            uniqueDomains,
-            duplicateDomains,
-            processingTime
-          });
-        } else {
-          console.log("[WARN] Socket.IO instance not available");
+            processedRecords
+          );
+          
+          processedRecords = result.processedRecords;
+          totalDuplicates = result.duplicateDomains;
+          
+          // Add delay between chunks
+          await sleep(BATCH_DELAY);
+          
+        } catch (error) {
+          console.error("[ERROR] Error processing chunk:", error.message);
+          throw error;
         }
       }
 
@@ -164,6 +220,8 @@ class UploadService {
         errorMessage += "Some records failed validation. Please check the data format.";
       } else if (error.name === 'SequelizeConnectionError') {
         errorMessage += "Database connection error. Please try again.";
+      } else if (error.name === 'SequelizeDatabaseError' && error.parent?.code === '40P01') {
+        errorMessage += "Database deadlock detected. Please try again.";
       }
 
       // Update job status to failed
