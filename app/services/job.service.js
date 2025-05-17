@@ -106,8 +106,23 @@ class UploadService {
 
               // Convert hit_count to integer if it exists
               if (row.hit_count !== undefined) {
-                row.hit_count = parseInt(row.hit_count) || 0;
+                console.log("hit count not undefined");
+                // Handle empty string, null, undefined, or invalid values
+                if (row.hit_count === '' || row.hit_count === null || row.hit_count === undefined) {
+                  console.log("hit count is empty");
+                  row.hit_count = 0;
+                } else {
+                  console.log("hit count is not empty");
+                  const parsed = parseInt(row.hit_count);
+                  row.hit_count = isNaN(parsed) ? 0 : parsed;
+                }
               }
+              console.log("hit count is", row.hit_count);
+
+              // Ensure other fields have default values if empty
+              row.name = (row.name && row.name.trim() !== '') ? row.name : 'null';
+              row.category = (row.category && row.category.trim() !== '') ? row.category : 'other';
+              row.reason = (row.reason && row.reason.trim() !== '') ? row.reason : '';
 
               return row;
             }
@@ -164,8 +179,28 @@ class UploadService {
       });
 
       try {
+        // Transform data before processing
+        const transformedChunk = chunk.map(record => {
+          // Convert hit_count to integer if it exists
+          if (record.hit_count !== undefined) {
+            if (record.hit_count === '' || record.hit_count === null || record.hit_count === undefined) {
+              record.hit_count = 0;
+            } else {
+              const parsed = parseInt(record.hit_count);
+              record.hit_count = isNaN(parsed) ? 0 : parsed;
+            }
+          }
+
+          // Ensure other fields have default values if empty
+          record.name = (record.name && record.name.trim() !== '') ? record.name : 'null';
+          record.category = (record.category && record.category.trim() !== '') ? record.category : 'other';
+          record.reason = (record.reason && record.reason.trim() !== '') ? record.reason : '';
+
+          return record;
+        });
+
         // Get ALL existing domains within transaction
-        const domains = chunk.map(record => record.domain).filter(Boolean);
+        const domains = transformedChunk.map(record => record.domain).filter(Boolean);
         if (domains.length === 0) {
           console.log("[WARN] No valid domains found in chunk");
           await transaction.commit();
@@ -180,7 +215,7 @@ class UploadService {
         const existingDomains = new Set(existingRecords.map(r => r.domain));
 
         // Filter out duplicates and remove id column
-        const newRecords = chunk
+        const newRecords = transformedChunk
           .filter(record => record.domain && !existingDomains.has(record.domain))
           .map(({ id, ...record }) => record); // Remove id column from each record
         

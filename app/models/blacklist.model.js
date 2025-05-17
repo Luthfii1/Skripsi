@@ -7,8 +7,8 @@ module.exports = (sequelize, Sequelize) => {
     },
     name: {
       type: Sequelize.STRING,
-      allowNull: false,
-      defaultValue: "empty name"
+      allowNull: true,
+      defaultValue: "null"
     },
     domain: {
       type: Sequelize.STRING,
@@ -21,11 +21,12 @@ module.exports = (sequelize, Sequelize) => {
     },
     category: {
       type: Sequelize.STRING,
-      allowNull: false,
+      allowNull: true,
       defaultValue: "other"
     },
     hit_count: {
       type: Sequelize.INTEGER,
+      allowNull: true,
       defaultValue: 0
     }
   });
