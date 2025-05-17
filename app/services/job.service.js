@@ -77,6 +77,7 @@ class UploadService {
         // Find the header line and column count
         const { headerLine, maxColumns, headerColumns } = await this.findHeaderLine(filePath);
         const records = [];
+        const failedRecords = [];
 
         fs.createReadStream(filePath)
           .pipe(csv.parse({ 
@@ -106,18 +107,8 @@ class UploadService {
 
               // Convert hit_count to integer if it exists
               if (row.hit_count !== undefined) {
-                console.log("hit count not undefined");
-                // Handle empty string, null, undefined, or invalid values
-                if (row.hit_count === '' || row.hit_count === null || row.hit_count === undefined) {
-                  console.log("hit count is empty");
-                  row.hit_count = 0;
-                } else {
-                  console.log("hit count is not empty");
-                  const parsed = parseInt(row.hit_count);
-                  row.hit_count = isNaN(parsed) ? 0 : parsed;
-                }
+                row.hit_count = row.hit_count === '' ? 0 : parseInt(row.hit_count) || 0;
               }
-              console.log("hit count is", row.hit_count);
 
               // Ensure other fields have default values if empty
               row.name = (row.name && row.name.trim() !== '') ? row.name : 'null';
@@ -130,9 +121,24 @@ class UploadService {
           .on('headers', (headers) => {
             console.log("[INFO] Using headers:", headers);
           })
-          .on('data', (data) => {
+          .on('data', (data, rowNumber) => {
             // Skip if this is the header row
             if (Object.values(data).some(val => val === 'hit_count' || val === 'id' || val === 'name' || val === 'domain')) {
+              return;
+            }
+
+            // Check for empty domain
+            if (!data.domain || data.domain.trim() === '') {
+              failedRecords.push({
+                row_number: rowNumber,
+                name: data.name,
+                domain: data.domain || '',
+                reason: data.reason,
+                category: data.category,
+                hit_count: data.hit_count,
+                error_message: 'Domain is required',
+                original_data: JSON.stringify(data)
+              });
               return;
             }
 
@@ -157,9 +163,10 @@ class UploadService {
               records.push(data);
             }
           })
-          .on('end', () => {
+          .on('end', async () => {
             console.log("[INFO] Successfully parsed CSV file");
-            resolve(records);
+            console.log(`[INFO] Found ${failedRecords.length} failed records`);
+            resolve({ records, failedRecords });
           })
           .on('error', (error) => {
             console.error("[ERROR] CSV Parsing Error:", error);
@@ -180,7 +187,15 @@ class UploadService {
 
       try {
         // Transform data before processing
-        const transformedChunk = chunk.map(record => {
+        const transformedChunk = chunk.map((record, index) => {
+          const originalData = { ...record };
+          let errorMessage = null;
+
+          // Validate domain (required field)
+          if (!record.domain || record.domain.trim() === '') {
+            errorMessage = 'Domain is required';
+          }
+
           // Convert hit_count to integer if it exists
           if (record.hit_count !== undefined) {
             if (record.hit_count === '' || record.hit_count === null || record.hit_count === undefined) {
@@ -196,15 +211,59 @@ class UploadService {
           record.category = (record.category && record.category.trim() !== '') ? record.category : 'other';
           record.reason = (record.reason && record.reason.trim() !== '') ? record.reason : '';
 
-          return record;
+          return {
+            record,
+            originalData,
+            errorMessage,
+            rowNumber: processedRecords + index + 1
+          };
         });
 
+        // Separate valid and invalid records
+        const validRecords = [];
+        const failedRecords = [];
+
+        transformedChunk.forEach(({ record, originalData, errorMessage, rowNumber }) => {
+          if (errorMessage) {
+            failedRecords.push({
+              job_id: jobId,
+              row_number: rowNumber,
+              name: record.name,
+              domain: record.domain,
+              reason: record.reason,
+              category: record.category,
+              hit_count: record.hit_count,
+              error_message: errorMessage,
+              original_data: JSON.stringify(originalData)
+            });
+          } else {
+            validRecords.push(record);
+          }
+        });
+
+        // Save failed records if any
+        if (failedRecords.length > 0) {
+          await db.failedUpload.bulkCreate(
+            failedRecords.map((record, index) => ({
+              ...record,
+              job_id: jobId,
+              row_number: index + 1 // Add row number starting from 1
+            })),
+            { transaction }
+          );
+        }
+
         // Get ALL existing domains within transaction
-        const domains = transformedChunk.map(record => record.domain).filter(Boolean);
+        const domains = validRecords.map(record => record.domain).filter(Boolean);
         if (domains.length === 0) {
           console.log("[WARN] No valid domains found in chunk");
           await transaction.commit();
-          return { processedRecords, uniqueDomains: 0, duplicateDomains: chunk.length };
+          return { 
+            processedRecords, 
+            uniqueDomains: 0, 
+            duplicateDomains: chunk.length,
+            failedRecords: failedRecords.length 
+          };
         }
 
         const existingRecords = await db.blacklist.findAll({
@@ -215,7 +274,7 @@ class UploadService {
         const existingDomains = new Set(existingRecords.map(r => r.domain));
 
         // Filter out duplicates and remove id column
-        const newRecords = transformedChunk
+        const newRecords = validRecords
           .filter(record => record.domain && !existingDomains.has(record.domain))
           .map(({ id, ...record }) => record); // Remove id column from each record
         
@@ -236,7 +295,7 @@ class UploadService {
         // Get current database state
         const currentCount = await db.blacklist.count();
         const uniqueDomains = currentCount - initialCount;
-        const duplicateDomains = processedRecords - uniqueDomains;
+        const duplicateDomains = processedRecords - uniqueDomains - failedRecords.length;
 
         // Update job status
         const progress = (processedRecords / totalRecords) * 100;
@@ -248,7 +307,10 @@ class UploadService {
             unique_domains: uniqueDomains,
             duplicate_domains: duplicateDomains,
             processing_time: processingTime,
-            status: processedRecords === totalRecords ? 'completed' : 'processing'
+            status: processedRecords === totalRecords ? 'completed' : 'processing',
+            error_message: failedRecords.length > 0 ? 
+              `Processed with ${failedRecords.length} failed records. Check failed_uploads table for details.` : 
+              null
           },
           { where: { id: jobId } }
         );
@@ -264,12 +326,18 @@ class UploadService {
             totalRecords,
             uniqueDomains,
             duplicateDomains,
+            failedRecords: failedRecords.length,
             processingTime,
             status: processedRecords === totalRecords ? 'completed' : 'processing'
           });
         }
 
-        return { processedRecords, uniqueDomains, duplicateDomains };
+        return { 
+          processedRecords, 
+          uniqueDomains, 
+          duplicateDomains,
+          failedRecords: failedRecords.length 
+        };
 
       } catch (error) {
         await transaction.rollback();
@@ -296,17 +364,42 @@ class UploadService {
 
     try {
       // Parse CSV file
-      const records = await this.validateAndParseCSV(filePath);
-      totalRecords = records.length;
+      const { records, failedRecords } = await this.validateAndParseCSV(filePath);
+      totalRecords = records.length + failedRecords.length;
       console.log("[INFO] Total records in file:", totalRecords);
+      console.log("[INFO] Failed records:", failedRecords.length);
 
       // Get initial count for this job
       const initialCount = await db.blacklist.count();
       console.log("[INFO] Initial blacklist count:", initialCount);
 
+      // Save failed records if any
+      if (failedRecords.length > 0) {
+        const transaction = await db.sequelize.transaction();
+        try {
+          await db.failedUpload.bulkCreate(
+            failedRecords.map((record, index) => ({
+              ...record,
+              job_id: jobId,
+              row_number: index + 1
+            })),
+            { transaction }
+          );
+          await transaction.commit();
+        } catch (error) {
+          await transaction.rollback();
+          throw error;
+        }
+      }
+
       // Update job with total records
       await db.uploadJob.update(
-        { total_records: totalRecords },
+        { 
+          total_records: totalRecords,
+          error_message: failedRecords.length > 0 ? 
+            `Found ${failedRecords.length} records with missing domains. Check failed_uploads table for details.` : 
+            null
+        },
         { where: { id: jobId } }
       );
 
@@ -339,7 +432,7 @@ class UploadService {
       // Get final counts
       const finalCount = await db.blacklist.count();
       const uniqueDomains = finalCount - initialCount;
-      const duplicateDomains = totalRecords - uniqueDomains;
+      const duplicateDomains = processedRecords - uniqueDomains; // Only count actual duplicates, not failed records
 
       console.log("[INFO] Processing complete:");
       console.log("[INFO] Initial blacklist count:", initialCount);
@@ -347,10 +440,14 @@ class UploadService {
       console.log("[INFO] Total records processed:", processedRecords);
       console.log("[INFO] Unique domains inserted:", uniqueDomains);
       console.log("[INFO] Duplicate domains skipped:", duplicateDomains);
+      console.log("[INFO] Failed records:", failedRecords.length);
       console.log("[INFO] Actual new domains in database:", finalCount - initialCount);
 
       // Prepare completion message
       let completionMessage = `Successfully processed ${totalRecords} records | `;
+      if (failedRecords.length > 0) {
+        completionMessage += `${failedRecords.length} records failed validation | `;
+      }
       if (duplicateDomains > 0) {
         completionMessage += `${duplicateDomains} duplicate domains were skipped | `;
       }

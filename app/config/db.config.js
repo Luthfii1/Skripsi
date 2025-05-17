@@ -21,6 +21,11 @@ db.sequelize = sequelize;
 db.blacklist = require("../models/blacklist.model.js")(sequelize, Sequelize);
 db.account = require("../models/account.model.js")(sequelize, Sequelize);
 db.uploadJob = require("../models/uploadJob.model.js")(sequelize, Sequelize);
+db.failedUpload = require("../models/failedUpload.model.js")(sequelize, Sequelize);
+
+// Add associations
+db.uploadJob.hasMany(db.failedUpload, { foreignKey: 'job_id' });
+db.failedUpload.belongsTo(db.uploadJob, { foreignKey: 'job_id' });
 
 // Test database connection
 sequelize.authenticate()
