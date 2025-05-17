@@ -4,8 +4,8 @@ const path = require("path");
 
 // File size limits (in bytes)
 const FILE_SIZE_LIMITS = {
-  CSV: 50 * 1024 * 1024, // 50MB for CSV files
-  TOTAL: 500 * 1024 * 1024 // 500MB total for multiple files
+  CSV: process.env.MAX_CSV_FILE_SIZE ? parseInt(process.env.MAX_CSV_FILE_SIZE) * 1024 * 1024 : 100 * 1024 * 1024, // Default 100MB for CSV files
+  TOTAL: process.env.MAX_TOTAL_UPLOAD_SIZE ? parseInt(process.env.MAX_TOTAL_UPLOAD_SIZE) * 1024 * 1024 : 1000 * 1024 * 1024 // Default 1000MB total for multiple files
 };
 
 const storage = multer.diskStorage({
