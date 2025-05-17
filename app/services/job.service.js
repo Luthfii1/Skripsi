@@ -560,6 +560,7 @@ class UploadService {
         'id',
         'filename',
         'status',
+        'failed_records',
         'total_records',
         'processed_records',
         'unique_domains',
