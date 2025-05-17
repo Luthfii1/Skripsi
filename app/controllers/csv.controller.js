@@ -42,7 +42,7 @@ exports.uploadFile = async (req, res) => {
 
     // Process the file in the background
     setImmediate(() => {
-      uploadService.processFileInChunks(req.file.path, job.id)
+      uploadService.processFileInChunks(req.file.path, job.id, req.file.filename)
         .catch(error => {
           console.error('Error processing file:', error);
         });

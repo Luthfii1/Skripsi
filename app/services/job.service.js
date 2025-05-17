@@ -156,7 +156,7 @@ class UploadService {
     });
   }
 
-  async processChunkWithRetry(chunk, jobId, startTime, totalRecords, processedRecords, initialCount) {
+  async processChunkWithRetry(chunk, jobId, fileName, startTime, totalRecords, processedRecords, initialCount) {
     let retries = 0;
     while (retries < MAX_RETRIES) {
       const transaction = await db.sequelize.transaction({
@@ -223,6 +223,7 @@ class UploadService {
           console.log("[INFO] Emitting progress update:", progress);
           global.io.emit('uploadProgress', {
             jobId,
+            fileName,
             progress,
             processedRecords,
             totalRecords,
@@ -252,7 +253,7 @@ class UploadService {
     throw new Error(`Failed to process chunk after ${MAX_RETRIES} retries due to deadlocks`);
   }
 
-  async processFileInChunks(filePath, jobId) {
+  async processFileInChunks(filePath, jobId, fileName) {
     console.log("[INFO] Starting file processing:", filePath);
     let totalRecords = 0;
     let processedRecords = 0;
@@ -282,6 +283,7 @@ class UploadService {
           const result = await this.processChunkWithRetry(
             chunk,
             jobId,
+            fileName,
             startTime,
             totalRecords,
             processedRecords,
@@ -385,7 +387,7 @@ class UploadService {
       jobs.push(job);
       
       // Process each file in the background
-      this.processFileInChunks(file.path, job.id)
+      this.processFileInChunks(file.path, job.id, job.filename)
         .catch(error => {
           console.error('Error processing file:', error);
         });
@@ -454,7 +456,7 @@ class UploadService {
         for (const job of jobs) {
           global.io.emit('uploadProgress', {
             jobId: job.id,
-            currentFile: job.filename,
+            fileName: job.filename,
             progress: 0,
             processedFiles: 0,
             totalFiles: files.length,
@@ -530,7 +532,7 @@ class UploadService {
           if (global.io) {
             global.io.emit('uploadProgress', {
               jobId: fileJob.id,
-              currentFile: file.filename,
+              fileName: file.filename,
               status: 'failed',
               error: error.message
             });
