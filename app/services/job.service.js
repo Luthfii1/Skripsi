@@ -103,6 +103,12 @@ class UploadService {
                 });
                 return newRow;
               }
+
+              // Convert hit_count to integer if it exists
+              if (row.hit_count !== undefined) {
+                row.hit_count = parseInt(row.hit_count) || 0;
+              }
+
               return row;
             }
           }))
@@ -110,6 +116,11 @@ class UploadService {
             console.log("[INFO] Using headers:", headers);
           })
           .on('data', (data) => {
+            // Skip if this is the header row
+            if (Object.values(data).some(val => val === 'hit_count' || val === 'id' || val === 'name' || val === 'domain')) {
+              return;
+            }
+
             // If domain is not in the first column, try to find it
             if (!data.domain) {
               const domainKey = Object.keys(data).find(key => 
@@ -168,8 +179,10 @@ class UploadService {
         });
         const existingDomains = new Set(existingRecords.map(r => r.domain));
 
-        // Filter out duplicates
-        const newRecords = chunk.filter(record => record.domain && !existingDomains.has(record.domain));
+        // Filter out duplicates and remove id column
+        const newRecords = chunk
+          .filter(record => record.domain && !existingDomains.has(record.domain))
+          .map(({ id, ...record }) => record); // Remove id column from each record
         
         if (newRecords.length > 0) {
           // Insert new records with transaction
