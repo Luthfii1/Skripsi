@@ -3,6 +3,7 @@ const csv = require("fast-csv");
 const { Parser } = require("json2csv");
 const db = require("../config/db.config");
 const Blacklist = db.blacklist;
+const { allowedFileExtensions, maxSingleFileSize, maxTotalUploadSize } = require("../models/configuration.model");
 
 const processSingleFile = async (file) => {
   const startTime = Date.now();
@@ -121,8 +122,18 @@ const generateCsvFile = async () => {
   return csvData;
 };
 
+const getAllowedFileExtensions = async () => {
+  return allowedFileExtensions;
+};
+
+const getFileSizeLimits = async () => {
+  return { singleFile: maxSingleFileSize, totalFiles: maxTotalUploadSize };
+};
+
 module.exports = {
   processSingleFile,
   processMultipleFiles,
-  generateCsvFile
+  generateCsvFile,
+  getAllowedFileExtensions, 
+  getFileSizeLimits 
 }; 

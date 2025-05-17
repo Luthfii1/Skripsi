@@ -130,3 +130,56 @@ exports.downloadFile = async (req, res) => {
     );
   }
 };
+
+exports.getAllowedFileExtensions = async (req, res) => {
+  try {
+    const allowedExtensions = await CsvService.getAllowedFileExtensions();
+    sendResponse(
+      res,
+      "success",
+      200,
+      "Allowed file extensions",
+      {
+        allowedExtensions: allowedExtensions
+      }
+    );
+  } catch (error) {
+    console.error(error);
+    sendResponse(
+      res,
+      "error",
+      500,
+      "Could not get allowed file extensions",
+      null,
+      "GetAllowedFileExtensionsError",
+      error.message
+    );
+  }
+};
+
+exports.getFileSizeLimits = async (req, res) => {
+  try {
+    const limits = await CsvService.getFileSizeLimits();
+    sendResponse(
+      res,
+      "success",
+      200,
+      "File size limits",
+      {
+        singleFile: limits.singleFile,
+        totalFiles: limits.totalFiles
+      }
+    );
+  } catch (error) {
+    console.error(error);
+    sendResponse(
+      res,
+      "error",
+      500,
+      "Could not get file size limits",
+      null,
+      "GetFileSizeLimitsError",
+      error.message
+    );
+  }
+};

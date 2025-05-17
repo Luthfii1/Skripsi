@@ -1,19 +1,17 @@
 const multer = require("multer");
 const sendResponse = require("../utils/Response.utilities");
 const path = require("path");
+const { allowedFileExtensions, maxSingleFileSize, maxTotalUploadSize } = require("../models/configuration.model");
 
 // File size limits (in bytes)
 const FILE_SIZE_LIMITS = {
-  SINGLE_FILE: process.env.MAX_SINGLE_FILE_SIZE ? parseInt(process.env.MAX_SINGLE_FILE_SIZE) * 1024 * 1024 : 100 * 1024 * 1024, // Default 100MB for single file
-  TOTAL: process.env.MAX_TOTAL_UPLOAD_SIZE ? parseInt(process.env.MAX_TOTAL_UPLOAD_SIZE) * 1024 * 1024 : 1000 * 1024 * 1024 // Default 1000MB total for multiple files
+  SINGLE_FILE: maxSingleFileSize * 1024 * 1024, 
+  TOTAL: maxTotalUploadSize * 1024 * 1024 
 };
 
 // Get allowed file extensions from environment variable
 const getAllowedExtensions = () => {
-  const allowedExts = process.env.ALLOWED_FILE_EXTENSIONS;
-  if (!allowedExts) {
-    return ['.csv', '.xlsx', '.xls']; 
-  }
+  const allowedExts = allowedFileExtensions;
   return allowedExts.split(',').map(ext => ext.trim().toLowerCase());
 };
 

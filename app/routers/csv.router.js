@@ -24,6 +24,12 @@ router.post(
 // Download file
 router.get("/csv-file", CsvController.downloadFile);
 
+// Get allowed file extensions
+router.get("/allowed-file-extensions", CsvController.getAllowedFileExtensions);
+
+// Get file size limits
+router.get("/file-size-limits", CsvController.getFileSizeLimits);
+
 // Add error handling middleware
 router.use(handleMulterError);
 
