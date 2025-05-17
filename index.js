@@ -40,11 +40,10 @@ io.on('connection', (socket) => {
 
 // Import routes and other files here
 const { getHomePage, getSocketTestPage } = require("./app/utils/LandingPage.js");
-const massiveDataRouter = require("./app/routers/csv.router.js");
-const accountRouter = require("./app/routers/account.router.js");
-const domainRouter = require("./app/routers/domain.router.js");
-const jobRouter = require("./app/routers/job.router.js");
-
+const massiveDataRouter = require("./app/routes/csv.router.js");
+const accountRouter = require("./app/routes/account.router.js");
+const domainRouter = require("./app/routes/domain.router.js");
+const jobRouter = require("./app/routes/job.router.js");
 // Serve static files from the public directory
 app.use(express.static("public"));
 app.use(express.static("resources"));
