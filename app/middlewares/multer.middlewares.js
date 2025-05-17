@@ -8,6 +8,25 @@ const FILE_SIZE_LIMITS = {
   TOTAL: process.env.MAX_TOTAL_UPLOAD_SIZE ? parseInt(process.env.MAX_TOTAL_UPLOAD_SIZE) * 1024 * 1024 : 1000 * 1024 * 1024 // Default 1000MB total for multiple files
 };
 
+// Get allowed file extensions from environment variable
+const getAllowedExtensions = () => {
+  const allowedExts = process.env.ALLOWED_FILE_EXTENSIONS;
+  if (!allowedExts) {
+    return ['.csv', '.xlsx', '.xls']; 
+  }
+  return allowedExts.split(',').map(ext => ext.trim().toLowerCase());
+};
+
+// MIME types mapping
+const MIME_TYPES = {
+  '.csv': ['text/csv', 'application/vnd.ms-excel'],
+  '.xlsx': ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+  '.xls': ['application/vnd.ms-excel'],
+  '.json': ['application/json'],
+  '.xml': ['application/xml', 'text/xml'],
+  '.txt': ['text/plain']
+};
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, __basedir + "/uploads/");
@@ -26,27 +45,19 @@ const storage = multer.diskStorage({
     cb(null, newFileName);
   },
 });
-
+  
 const fileFilter = (req, file, cb) => {
   // Check file extension
   const ext = path.extname(file.originalname).toLowerCase();
-  const allowedExtensions = ['.csv', '.xlsx', '.xls', '.json', '.xml', '.txt'];
+  const allowedExtensions = getAllowedExtensions();
   
   if (!allowedExtensions.includes(ext)) {
-    return cb(new Error('Invalid file type! Allowed types: CSV, Excel, JSON, XML, TXT'), false);
+    return cb(new Error(`Invalid file type! Allowed types: ${allowedExtensions.join(', ')}`), false);
   }
 
-  // Check MIME types
-  const allowedMimeTypes = {
-    '.csv': ['text/csv', 'application/vnd.ms-excel'],
-    '.xlsx': ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
-    '.xls': ['application/vnd.ms-excel'],
-    '.json': ['application/json'],
-    '.xml': ['application/xml', 'text/xml'],
-    '.txt': ['text/plain']
-  };
-
-  if (!allowedMimeTypes[ext].includes(file.mimetype)) {
+  // Check MIME type if extension is allowed
+  const validMimeTypes = MIME_TYPES[ext] || [];
+  if (!validMimeTypes.includes(file.mimetype)) {
     return cb(new Error(`Invalid MIME type for ${ext} files!`), false);
   }
 
