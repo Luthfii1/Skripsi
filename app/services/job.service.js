@@ -448,21 +448,24 @@ class UploadService {
     let totalDuplicateDomains = 0;
 
     try {
-      // emit all jobs for the files
+      // Emit initial state for all jobs
       if (global.io) {
         for (const job of jobs) {
           global.io.emit('uploadProgress', {
-            fileJobId: job.id,
+            jobId: job.id,
             currentFile: job.filename,
             progress: 0,
+            processedFiles: 0,
             totalFiles: files.length,
             totalRecords: 0,
             totalUniqueDomains: 0,
             totalDuplicateDomains: 0,
-            processingTime: 0
+            processingTime: 0,
+            status: 'pending'
           });
         }
       }
+
       // Process each file sequentially
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -478,21 +481,6 @@ class UploadService {
             },
             { where: { id: fileJob.id } }
           );
-
-          // Emit progress update
-          if (global.io) {
-            global.io.emit('uploadProgress', {
-              fileJobId: fileJob.id,
-              currentFile: file.filename,
-              progress: (processedFiles / files.length) * 100,
-              processedFiles,
-              totalFiles: files.length,
-              totalRecords,
-              totalUniqueDomains,
-              totalDuplicateDomains,
-              processingTime: (Date.now() - startTime) / 1000
-            });
-          }
 
           // Get initial count for this file
           const initialCount = await db.blacklist.count();
@@ -513,7 +501,8 @@ class UploadService {
           await db.uploadJob.update(
             {
               unique_domains: uniqueDomains,
-              duplicate_domains: duplicateDomains
+              duplicate_domains: duplicateDomains,
+              status: 'completed'
             },
             { where: { id: fileJob.id } }
           );
@@ -524,19 +513,19 @@ class UploadService {
           totalDuplicateDomains += duplicateDomains;
           processedFiles++;
 
-          // Emit final progress update for this file
+          // Emit completion update for this file
           if (global.io) {
             global.io.emit('uploadProgress', {
-              fileJobId: fileJob.id,
-              progress: (processedFiles / files.length) * 100,
+              jobId: fileJob.id,
+              currentFile: file.filename,
+              progress: 100,
               processedFiles,
               totalFiles: files.length,
               totalRecords,
               totalUniqueDomains,
               totalDuplicateDomains,
               processingTime: (Date.now() - startTime) / 1000,
-              currentFile: file.filename,
-              fileStatus: 'completed',
+              status: 'completed',
               uniqueDomains,
               duplicateDomains
             });
@@ -563,10 +552,10 @@ class UploadService {
           // Emit error update
           if (global.io) {
             global.io.emit('uploadProgress', {
-              fileJobId: fileJob.id,
-              error: error.message,
+              jobId: fileJob.id,
               currentFile: file.filename,
-              fileStatus: 'failed'
+              status: 'failed',
+              error: error.message
             });
           }
 
