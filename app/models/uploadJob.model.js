@@ -31,6 +31,11 @@ const UploadJob = (sequelize, Sequelize) => {
       defaultValue: 0,
       comment: 'Number of duplicate domains skipped'
     },
+    failed_records: {
+      type: Sequelize.INTEGER,
+      defaultValue: 0,
+      comment: 'Number of records that failed validation'
+    },
     processing_time: {
       type: Sequelize.FLOAT,
       defaultValue: 0,

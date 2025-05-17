@@ -247,7 +247,7 @@ class UploadService {
             failedRecords.map((record, index) => ({
               ...record,
               job_id: jobId,
-              row_number: index + 1 // Add row number starting from 1
+              row_number: index + 1
             })),
             { transaction }
           );
@@ -261,7 +261,7 @@ class UploadService {
           return { 
             processedRecords, 
             uniqueDomains: 0, 
-            duplicateDomains: chunk.length,
+            duplicateDomains: 0,
             failedRecords: failedRecords.length 
           };
         }
@@ -276,7 +276,10 @@ class UploadService {
         // Filter out duplicates and remove id column
         const newRecords = validRecords
           .filter(record => record.domain && !existingDomains.has(record.domain))
-          .map(({ id, ...record }) => record); // Remove id column from each record
+          .map(({ id, ...record }) => record);
+        
+        // Calculate duplicates in this chunk
+        const duplicateCount = validRecords.length - newRecords.length;
         
         if (newRecords.length > 0) {
           // Insert new records with transaction
@@ -295,7 +298,7 @@ class UploadService {
         // Get current database state
         const currentCount = await db.blacklist.count();
         const uniqueDomains = currentCount - initialCount;
-        const duplicateDomains = processedRecords - uniqueDomains - failedRecords.length;
+        const duplicateDomains = duplicateCount; // Use the actual duplicate count from this chunk
 
         // Update job status
         const progress = (processedRecords / totalRecords) * 100;
@@ -316,8 +319,9 @@ class UploadService {
         );
 
         // Emit progress update using global io
-        if (global.io) {
+        if (global.io && progress < 100) {
           console.log("[INFO] Emitting progress update:", progress);
+          console.log("[INFO] Failed records:", failedRecords.length);
           global.io.emit('uploadProgress', {
             jobId,
             fileName,
@@ -396,13 +400,14 @@ class UploadService {
       await db.uploadJob.update(
         { 
           total_records: totalRecords,
+          failed_records: failedRecords.length,
           error_message: failedRecords.length > 0 ? 
             `Found ${failedRecords.length} records with missing domains. Check failed_uploads table for details.` : 
             null
         },
         { where: { id: jobId } }
       );
-
+      
       // Process in chunks
       for (let i = 0; i < records.length; i += CHUNK_SIZE) {
         const chunk = records.slice(i, i + CHUNK_SIZE);
@@ -463,10 +468,27 @@ class UploadService {
           processed_records: processedRecords,
           unique_domains: uniqueDomains,
           duplicate_domains: duplicateDomains,
+          failed_records: failedRecords.length,
           error_message: completionMessage
         },
         { where: { id: jobId } }
       );
+
+      // emit completion data 
+      if (global.io) {
+        global.io.emit('uploadProgress', {
+          jobId,
+          fileName,
+          progress: 100,
+          processedRecords,
+          totalRecords,
+          uniqueDomains,
+          duplicateDomains,
+          failedRecords: failedRecords.length,
+          processingTime: (Date.now() - startTime) / 1000,
+          status: 'completed'
+        });
+      }
 
       // Clean up file
       fs.unlink(filePath, (err) => {
@@ -627,10 +649,13 @@ class UploadService {
           // Get the final stats for this file
           const fileStats = await db.uploadJob.findByPk(fileJob.id);
           const finalCount = await db.blacklist.count();
+          const failedRecords = await db.failedUpload.findAll({
+            where: { job_id: fileJob.id }
+          });   
           
           // Calculate unique and duplicate domains for this file
           const uniqueDomains = finalCount - initialCount;
-          const duplicateDomains = fileStats.total_records - uniqueDomains;
+          const duplicateDomains = fileStats.total_records - uniqueDomains - failedRecords.length;
           
           // Update file job with accurate stats
           await db.uploadJob.update(
