@@ -13,10 +13,17 @@ const storage = multer.diskStorage({
     cb(null, __basedir + "/uploads/");
   },
   filename: (req, file, cb) => {
-    // Generate unique filename original name + timestamp
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, file.originalname + uniqueSuffix + ext);
+    const now = new Date();
+    const date = now.toLocaleDateString('en-GB').replace(/\//g, '-'); // Format: DD-MM-YYYY
+    const time = now.toLocaleTimeString('en-US', { hour12: false }).replace(/:/g, ':'); // Format: HH:MM:SS
+    
+    // Get file name without extension
+    const fileNameWithoutExt = path.basename(file.originalname, path.extname(file.originalname));
+    
+    // Create new filename with date and time
+    const newFileName = `${fileNameWithoutExt}_${date}_${time}${path.extname(file.originalname)}`;
+    
+    cb(null, newFileName);
   },
 });
 
