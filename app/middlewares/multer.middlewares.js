@@ -4,7 +4,7 @@ const path = require("path");
 
 // File size limits (in bytes)
 const FILE_SIZE_LIMITS = {
-  CSV: process.env.MAX_CSV_FILE_SIZE ? parseInt(process.env.MAX_CSV_FILE_SIZE) * 1024 * 1024 : 100 * 1024 * 1024, // Default 100MB for CSV files
+  SINGLE_FILE: process.env.MAX_SINGLE_FILE_SIZE ? parseInt(process.env.MAX_SINGLE_FILE_SIZE) * 1024 * 1024 : 100 * 1024 * 1024, // Default 100MB for single file
   TOTAL: process.env.MAX_TOTAL_UPLOAD_SIZE ? parseInt(process.env.MAX_TOTAL_UPLOAD_SIZE) * 1024 * 1024 : 1000 * 1024 * 1024 // Default 1000MB total for multiple files
 };
 
@@ -30,13 +30,29 @@ const storage = multer.diskStorage({
 const fileFilter = (req, file, cb) => {
   // Check file extension
   const ext = path.extname(file.originalname).toLowerCase();
-  if (ext !== '.csv') {
-    return cb(new Error('Only CSV files are allowed!'), false);
+  const allowedExtensions = ['.csv', '.xlsx', '.xls', '.json', '.xml', '.txt'];
+  
+  if (!allowedExtensions.includes(ext)) {
+    return cb(new Error('Invalid file type! Allowed types: CSV, Excel, JSON, XML, TXT'), false);
   }
 
-  // Check MIME type
-  if (file.mimetype !== 'text/csv' && file.mimetype !== 'application/vnd.ms-excel') {
-    return cb(new Error('Invalid file type. Only CSV files are allowed!'), false);
+  // Check MIME types
+  const allowedMimeTypes = {
+    '.csv': ['text/csv', 'application/vnd.ms-excel'],
+    '.xlsx': ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    '.xls': ['application/vnd.ms-excel'],
+    '.json': ['application/json'],
+    '.xml': ['application/xml', 'text/xml'],
+    '.txt': ['text/plain']
+  };
+
+  if (!allowedMimeTypes[ext].includes(file.mimetype)) {
+    return cb(new Error(`Invalid MIME type for ${ext} files!`), false);
+  }
+
+  // Check file size using single file limit
+  if (file.size > FILE_SIZE_LIMITS.SINGLE_FILE) {
+    return cb(new Error(`File size exceeds the limit of ${FILE_SIZE_LIMITS.SINGLE_FILE / (1024 * 1024)}MB`), false);
   }
 
   cb(null, true);
@@ -51,8 +67,8 @@ const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: FILE_SIZE_LIMITS.CSV, // 50MB per file
-    files: 10 // Maximum 10 files
+    fileSize: FILE_SIZE_LIMITS.SINGLE_FILE, 
+    files: 10 
   }
 });
 
@@ -79,7 +95,7 @@ const handleMulterError = (err, req, res, next) => {
           "File too large",
           null,
           "ValidationError",
-          `File size should not exceed ${FILE_SIZE_LIMITS.CSV / (1024 * 1024)}MB`
+          `File size should not exceed ${FILE_SIZE_LIMITS.SINGLE_FILE / (1024 * 1024)}MB`
         );
       
       case 'LIMIT_FILE_COUNT':
@@ -106,7 +122,7 @@ const handleMulterError = (err, req, res, next) => {
     }
   }
 
-  if (err.message.includes('Only CSV files are allowed') || 
+  if (err.message.includes('Only CSV, Excel, JSON, XML, TXT files are allowed') || 
       err.message.includes('Invalid file type')) {
     return sendResponse(
       res,
@@ -115,7 +131,7 @@ const handleMulterError = (err, req, res, next) => {
       "Invalid file type",
       null,
       "ValidationError",
-      "Only CSV files are allowed"
+      "Only CSV, Excel, JSON, XML, TXT files are allowed"
     );
   }
 
