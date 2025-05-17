@@ -438,6 +438,147 @@ class UploadService {
     // Retry processing
     return this.processFileInChunks(job.filename, job.id);
   }
+
+  async processMultipleFilesSafe(files, jobs) {
+    console.log("[INFO] Starting safe sequential file processing");
+    const startTime = Date.now();
+    let processedFiles = 0;
+    let totalRecords = 0;
+    let totalUniqueDomains = 0;
+    let totalDuplicateDomains = 0;
+
+    try {
+      // emit all jobs for the files
+      if (global.io) {
+        for (const job of jobs) {
+          global.io.emit('uploadProgress', {
+            fileJobId: job.id,
+            currentFile: job.filename,
+            progress: 0,
+            totalFiles: files.length,
+            totalRecords: 0,
+            totalUniqueDomains: 0,
+            totalDuplicateDomains: 0,
+            processingTime: 0
+          });
+        }
+      }
+      // Process each file sequentially
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fileJob = jobs[i];
+        
+        console.log(`[INFO] Processing file ${i + 1}/${files.length}: ${file.filename}`);
+        
+        try {
+          // Update file job status to processing
+          await db.uploadJob.update(
+            {
+              status: 'processing'
+            },
+            { where: { id: fileJob.id } }
+          );
+
+          // Emit progress update
+          if (global.io) {
+            global.io.emit('uploadProgress', {
+              fileJobId: fileJob.id,
+              currentFile: file.filename,
+              progress: (processedFiles / files.length) * 100,
+              processedFiles,
+              totalFiles: files.length,
+              totalRecords,
+              totalUniqueDomains,
+              totalDuplicateDomains,
+              processingTime: (Date.now() - startTime) / 1000
+            });
+          }
+
+          // Get initial count for this file
+          const initialCount = await db.blacklist.count();
+          console.log(`[INFO] Initial blacklist count for ${file.filename}: ${initialCount}`);
+
+          // Process the file
+          await this.processFileInChunks(file.path, fileJob.id);
+          
+          // Get the final stats for this file
+          const fileStats = await db.uploadJob.findByPk(fileJob.id);
+          const finalCount = await db.blacklist.count();
+          
+          // Calculate unique and duplicate domains for this file
+          const uniqueDomains = finalCount - initialCount;
+          const duplicateDomains = fileStats.total_records - uniqueDomains;
+          
+          // Update file job with accurate stats
+          await db.uploadJob.update(
+            {
+              unique_domains: uniqueDomains,
+              duplicate_domains: duplicateDomains
+            },
+            { where: { id: fileJob.id } }
+          );
+          
+          // Update totals
+          totalRecords += fileStats.total_records;
+          totalUniqueDomains += uniqueDomains;
+          totalDuplicateDomains += duplicateDomains;
+          processedFiles++;
+
+          // Emit final progress update for this file
+          if (global.io) {
+            global.io.emit('uploadProgress', {
+              fileJobId: fileJob.id,
+              progress: (processedFiles / files.length) * 100,
+              processedFiles,
+              totalFiles: files.length,
+              totalRecords,
+              totalUniqueDomains,
+              totalDuplicateDomains,
+              processingTime: (Date.now() - startTime) / 1000,
+              currentFile: file.filename,
+              fileStatus: 'completed',
+              uniqueDomains,
+              duplicateDomains
+            });
+          }
+
+          // Clean up the file
+          fs.unlink(file.path, (err) => {
+            if (err) console.error("[ERROR] Error deleting file:", err);
+            else console.log("[INFO] Cleaned up file:", file.path);
+          });
+
+        } catch (error) {
+          console.error(`[ERROR] Error processing file ${file.filename}:`, error);
+          
+          // Update file job status
+          await db.uploadJob.update(
+            {
+              status: 'failed',
+              error_message: `Error processing file: ${error.message}`
+            },
+            { where: { id: fileJob.id } }
+          );
+
+          // Emit error update
+          if (global.io) {
+            global.io.emit('uploadProgress', {
+              fileJobId: fileJob.id,
+              error: error.message,
+              currentFile: file.filename,
+              fileStatus: 'failed'
+            });
+          }
+
+          throw error;
+        }
+      }
+
+    } catch (error) {
+      console.error("[ERROR] Safe Sequential Processing Error:", error);
+      throw error;
+    }
+  }
 }
 
 module.exports = UploadService; 

@@ -107,6 +107,66 @@ exports.uploadMultipleFiles = async (req, res) => {
   }
 };
 
+exports.uploadMultipleFilesSafe = async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return sendResponse(
+        res,
+        "error",
+        400,
+        "No files uploaded",
+        null,
+        "ValidationError",
+        "Please upload files with key 'files'"
+      );
+    }
+
+    // Create all jobs first
+    const jobs = await Promise.all(req.files.map(async (file) => {
+      const job = await UploadJob.create({
+        filename: file.filename,
+        status: 'pending'
+      });
+      return job;
+    }));
+
+    // Immediately respond to the client with all job IDs
+    sendResponse(
+      res,
+      "success",
+      200,
+      "Multiple file upload started successfully",
+      {
+        jobs: jobs.map(job => ({
+          id: job.id,
+          filename: job.filename,
+          status: job.status
+        })),
+        message: "Files are being processed sequentially with safe logging"
+      }
+    );
+
+    // Process the files sequentially in the background
+    setImmediate(() => {
+      uploadService.processMultipleFilesSafe(req.files, jobs)
+        .catch(error => {
+          console.error('Error processing multiple files with safe logging:', error);
+        });
+    });
+  } catch (error) {
+    console.error(error);
+    sendResponse(
+      res,
+      "error",
+      500,
+      "Could not upload the files",
+      null,
+      "UploadError",
+      error.message
+    );
+  }
+};
+
 exports.downloadFile = async (req, res) => {
   try {
     const csvData = await CsvService.generateCsvFile();
