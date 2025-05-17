@@ -18,7 +18,7 @@ router.post(
   "/csv-multiple-upload",
   upload.array("files", 10),
   checkTotalSize,
-  CsvController.uploadMultipleFilesSafe
+  CsvController.uploadMultipleFiles
 );
 
 // Upload multiple files with safe logging

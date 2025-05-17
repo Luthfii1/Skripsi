@@ -228,7 +228,8 @@ class UploadService {
             totalRecords,
             uniqueDomains,
             duplicateDomains,
-            processingTime
+            processingTime,
+            status: processedRecords === totalRecords ? 'completed' : 'processing'
           });
         }
 
@@ -512,24 +513,6 @@ class UploadService {
           totalUniqueDomains += uniqueDomains;
           totalDuplicateDomains += duplicateDomains;
           processedFiles++;
-
-          // Emit completion update for this file
-          if (global.io) {
-            global.io.emit('uploadProgress', {
-              jobId: fileJob.id,
-              currentFile: file.filename,
-              progress: 100,
-              processedFiles,
-              totalFiles: files.length,
-              totalRecords,
-              totalUniqueDomains,
-              totalDuplicateDomains,
-              processingTime: (Date.now() - startTime) / 1000,
-              status: 'completed',
-              uniqueDomains,
-              duplicateDomains
-            });
-          }
 
         } catch (error) {
           console.error(`[ERROR] Error processing file ${file.filename}:`, error);
