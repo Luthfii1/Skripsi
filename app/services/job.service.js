@@ -531,12 +531,6 @@ class UploadService {
             });
           }
 
-          // Clean up the file
-          fs.unlink(file.path, (err) => {
-            if (err) console.error("[ERROR] Error deleting file:", err);
-            else console.log("[INFO] Cleaned up file:", file.path);
-          });
-
         } catch (error) {
           console.error(`[ERROR] Error processing file ${file.filename}:`, error);
           
