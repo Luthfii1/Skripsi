@@ -21,4 +21,7 @@ router.get('/:jobId/failed-records/download', failedUploadController.downloadFai
 // Update a failed record
 router.put('/:jobId/failed-records/:recordId', failedUploadController.updateFailedRecord);
 
+// Process all failed records for a job
+router.post('/:jobId/failed-records/process-all', failedUploadController.processAllFailedRecords);
+
 module.exports = router;

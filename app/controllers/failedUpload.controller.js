@@ -99,4 +99,77 @@ exports.updateFailedRecord = async (req, res) => {
         "Failed to update failed record"
     );
   }
+};
+
+/**
+ * Process all failed records for a job
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+exports.processAllFailedRecords = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const { records } = req.body;
+
+    if (!records || !Array.isArray(records)) {
+      return sendResponse(
+        res,
+        "error",
+        400,
+        "Invalid request body",
+        null,
+        "ValidationError",
+        "Records must be an array"
+      );
+    }
+
+    // Validate each record has required fields
+    for (const record of records) {
+      if (!record.row_number || !record.domain || !record.name || !record.category || !record.reason || !record.hit_count) {
+        return sendResponse(
+          res,
+          "error",
+          400,
+          "Invalid record format",
+          null,
+          "ValidationError",
+          "Each record must have row_number, domain, name, category, reason, and hit_count"
+        );
+      }
+    }
+
+    const result = await failedUploadService.processAllFailedRecords(jobId, records);
+
+    return sendResponse(
+      res,
+      "success",
+      200,
+      "Records processed successfully",
+      result
+    );
+  } catch (error) {
+    console.error('Error processing failed records:', error);
+    
+    if (error.message.includes('does not exist')) {
+      return sendResponse(
+        res,
+        "error",
+        404,
+        "Job not found",
+        null,
+        "NotFoundError",
+        error.message
+      );
+    }
+
+    return sendResponse(
+      res,
+      "error",
+      500,
+      "Error processing failed records",
+      null,
+      "InternalServerError",
+      error.message
+    );
+  }
 }; 
