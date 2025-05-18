@@ -645,7 +645,7 @@ class UploadService {
           console.log(`[INFO] Initial blacklist count for ${file.filename}: ${initialCount}`);
 
           // Process the file
-          await this.processFileInChunks(file.path, fileJob.id);
+          await this.processFileInChunks(file.path, fileJob.id, file.filename);
           
           // Get the final stats for this file
           const fileStats = await db.uploadJob.findByPk(fileJob.id);

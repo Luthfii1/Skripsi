@@ -155,6 +155,15 @@ class FailedUploadService {
             original_data: originalDataString
           }, { transaction });
 
+          // Add to blacklists table
+          await db.blacklist.create({
+            domain: record.domain,
+            name: record.name,
+            reason: record.reason,
+            category: record.category,
+            hit_count: record.hit_count
+          }, { transaction });
+
           processedRecords.push(existingRecord);
         } catch (error) {
           failedRecords.push({
