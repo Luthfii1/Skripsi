@@ -10,8 +10,8 @@ const UploadJob = (sequelize, Sequelize) => {
       allowNull: false,
     },
     status: {
-      type: Sequelize.ENUM("pending", "processing", "completed", "failed"),
-      defaultValue: "pending",
+      type: Sequelize.ENUM("queued", "pending", "processing", "completed", "failed"),
+      defaultValue: "queued",
     },
     total_records: {
       type: Sequelize.INTEGER,
