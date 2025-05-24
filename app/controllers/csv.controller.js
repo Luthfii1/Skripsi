@@ -4,6 +4,7 @@ const sendResponse = require("../utils/Response.utilities");
 const CsvService = require("../services/csv.service");
 const UploadService = require("../services/job.service");
 const { io } = require('../../index');
+const queueService = require('../services/queue.service');
 
 // Initialize UploadService with Socket.IO instance
 const uploadService = new UploadService(io);
@@ -25,37 +26,48 @@ exports.uploadFile = async (req, res) => {
     // Create a new upload job
     const job = await UploadJob.create({
       filename: req.file.filename,
-      status: 'pending'
+      status: 'queued'
     });
 
-    // Immediately respond to the client
+    // Send response immediately
     sendResponse(
       res,
       "success",
       200,
-      "File upload started successfully",
+      "File upload queued successfully",
       {
         jobId: job.id,
-        message: "File is being processed in the background"
+        message: "File has been queued for processing"
       }
     );
 
-    // Process the file in the background
-    setImmediate(() => {
-      uploadService.processFileInChunks(req.file.path, job.id, req.file.filename)
-        .catch(error => {
-          console.error('Error processing file:', error);
-        });
+    // Queue the job after sending response
+    queueService.addToQueue({
+      filePath: req.file.path,
+      jobId: job.id,
+      filename: req.file.filename,
+      processFileInChunks: uploadService.processFileInChunks.bind(uploadService)
+    }).catch(error => {
+      console.error(`[ERROR] Failed to queue job ${job.id}:`, error);
+      // Update job status to failed if queueing fails
+      UploadJob.update(
+        {
+          status: 'failed',
+          error_message: `Failed to queue job: ${error.message}`
+        },
+        { where: { id: job.id } }
+      );
     });
+
   } catch (error) {
-    console.error(error);
+    console.error('Error in uploadFile:', error);
     sendResponse(
       res,
       "error",
       500,
-      "Could not upload the file",
+      "Error processing file upload",
       null,
-      error.type || "UploadError",
+      error.name || "ServerError",
       error.message
     );
   }
