@@ -3,12 +3,12 @@ const UploadJob = db.uploadJob;
 const sendResponse = require("../utils/Response.utilities");
 const UploadService = require("../services/job.service");
 
-// Initialize UploadService without io
-const uploadService = new UploadService();
+// Remove the instantiation since UploadService exports functions directly
+// const uploadService = new UploadService();
 
 exports.getAllJobs = async (req, res) => {
   try {
-    const jobs = await uploadService.getAllJobs();
+    const jobs = await UploadService.getAllJobs();
     sendResponse(
       res,
       "success",
@@ -32,7 +32,7 @@ exports.getAllJobs = async (req, res) => {
 
 exports.getJobStatus = async (req, res) => {
   try {
-    const job = await uploadService.getJobStatus(req.params.jobId);
+    const job = await UploadService.getJobStatus(req.params.jobId);
     if (!job) {
       return sendResponse(
         res,
@@ -67,7 +67,7 @@ exports.getJobStatus = async (req, res) => {
 
 exports.retryFailedJob = async (req, res) => {
   try {
-    const job = await uploadService.retryFailedJob(req.params.jobId);
+    const job = await UploadService.retryFailedJob(req.params.jobId);
     sendResponse(
       res,
       "success",

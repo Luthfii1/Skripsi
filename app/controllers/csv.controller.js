@@ -6,8 +6,8 @@ const UploadService = require("../services/job.service");
 const { io } = require('../../index');
 const queueService = require('../services/queue.service');
 
-// Initialize UploadService with Socket.IO instance
-const uploadService = new UploadService(io);
+// Remove commented out initialization
+// const uploadService = new UploadService(io);
 
 exports.uploadFile = async (req, res) => {
   try {
@@ -46,7 +46,7 @@ exports.uploadFile = async (req, res) => {
       filePath: req.file.path,
       jobId: job.id,
       filename: req.file.filename,
-      processFileInChunks: uploadService.processFileInChunks.bind(uploadService)
+      processFileInChunks: UploadService.processFileInChunks
     }).catch(error => {
       console.error(`[ERROR] Failed to queue job ${job.id}:`, error);
       // Update job status to failed if queueing fails
@@ -100,7 +100,7 @@ exports.uploadMultipleFiles = async (req, res) => {
 
     // Process the files in the background
     setImmediate(() => {
-      uploadService.processMultipleFiles(req.files)
+      UploadService.processMultipleFiles(req.files)
         .catch(error => {
           console.error('Error processing multiple files:', error);
         });
@@ -160,7 +160,7 @@ exports.uploadMultipleFilesSafe = async (req, res) => {
 
     // Process the files sequentially in the background
     setImmediate(() => {
-      uploadService.processMultipleFilesSafe(req.files, jobs)
+      UploadService.processMultipleFilesSafe(req.files, jobs)
         .catch(error => {
           console.error('Error processing multiple files with safe logging:', error);
         });
