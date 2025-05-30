@@ -592,115 +592,6 @@ const retryFailedJob = async (jobId) => {
   return processFileInChunks(job.filename, job.id);
 }
 
-const processMultipleFilesSafe = async (files, jobs) => {
-  console.log("[INFO] Starting safe sequential file processing");
-  const startTime = Date.now();
-  let processedFiles = 0;
-  let totalRecords = 0;
-  let totalUniqueDomains = 0;
-  let totalDuplicateDomains = 0;
-
-  try {
-    // Emit initial state for all jobs
-    if (global.io) {
-      for (const job of jobs) {
-        global.io.emit('uploadProgress', {
-          jobId: job.id,
-          filename: job.filename,
-          progress: 0,
-          processedFiles: 0,
-          totalFiles: files.length,
-          totalRecords: 0,
-          totalUniqueDomains: 0,
-          totalDuplicateDomains: 0,
-          processingTime: 0,
-          status: 'pending'
-        });
-      }
-    }
-
-    // Process each file sequentially
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const fileJob = jobs[i];
-      
-      console.log(`[INFO] Processing file ${i + 1}/${files.length}: ${file.filename}`);
-      
-      try {
-        // Update file job status to processing
-        await db.uploadJob.update(
-          {
-            status: 'processing'
-          },
-          { where: { id: fileJob.id } }
-        );
-
-        // Get initial count for this file
-        const initialCount = await db.blacklist.count();
-        console.log(`[INFO] Initial blacklist count for ${file.filename}: ${initialCount}`);
-
-        // Process the file
-        await processFileInChunks(file.path, fileJob.id, file.filename);
-        
-        // Get the final stats for this file
-        const fileStats = await db.uploadJob.findByPk(fileJob.id);
-        const finalCount = await db.blacklist.count();
-        const failedRecords = await db.failedUpload.findAll({
-          where: { job_id: fileJob.id }
-        });   
-        
-        // Calculate unique and duplicate domains for this file
-        const uniqueDomains = finalCount - initialCount;
-        const duplicateDomains = fileStats.total_records - uniqueDomains - failedRecords.length;
-        
-        // Update file job with accurate stats
-        await db.uploadJob.update(
-          {
-            unique_domains: uniqueDomains,
-            duplicate_domains: duplicateDomains,
-            status: 'completed'
-          },
-          { where: { id: fileJob.id } }
-        );
-        
-        // Update totals
-        totalRecords += fileStats.total_records;
-        totalUniqueDomains += uniqueDomains;
-        totalDuplicateDomains += duplicateDomains;
-        processedFiles++;
-
-      } catch (error) {
-        console.error(`[ERROR] Error processing file ${file.filename}:`, error);
-        
-        // Update file job status
-        await db.uploadJob.update(
-          {
-            status: 'failed',
-            error_message: `Error processing file: ${error.message}`
-          },
-          { where: { id: fileJob.id } }
-        );
-
-        // Emit error update
-        if (global.io) {
-          global.io.emit('uploadProgress', {
-            jobId: fileJob.id,
-            filename: file.filename,
-            status: 'failed',
-            error: error.message
-          });
-        }
-
-        throw error;
-      }
-    }
-
-  } catch (error) {
-    console.error("[ERROR] Safe Sequential Processing Error:", error);
-    throw error;
-  }
-}
-
 module.exports = {
   findHeaderLine,
   validateAndParseCSV,
@@ -709,6 +600,5 @@ module.exports = {
   processMultipleFiles,
   getJobStatus,
   getAllJobs,
-  retryFailedJob,
-  processMultipleFilesSafe
+  retryFailedJob
 }; 

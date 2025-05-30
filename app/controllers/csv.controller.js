@@ -137,34 +137,48 @@ exports.uploadMultipleFilesSafe = async (req, res) => {
     const jobs = await Promise.all(req.files.map(async (file) => {
       const job = await UploadJob.create({
         filename: file.filename,
-        status: 'pending'
+        status: 'queued'
       });
       return job;
     }));
 
-    // Immediately respond to the client with all job IDs
+    // Send immediate response
     sendResponse(
       res,
       "success",
       200,
-      "Multiple file upload started successfully",
+      "Multiple file upload queued successfully",
       {
         jobs: jobs.map(job => ({
           id: job.id,
           filename: job.filename,
           status: job.status
         })),
-        message: "Files are being processed sequentially with safe logging"
+        message: "Files have been queued for processing"
       }
     );
 
-    // Process the files sequentially in the background
-    setImmediate(() => {
-      UploadService.processMultipleFilesSafe(req.files, jobs)
-        .catch(error => {
-          console.error('Error processing multiple files with safe logging:', error);
-        });
-    });
+    // Queue each file
+    for (let i = 0; i < req.files.length; i++) {
+      const file = req.files[i];
+      const job = jobs[i];
+      
+      queueService.addToQueue({
+        filePath: file.path,
+        jobId: job.id,
+        filename: file.filename,
+        processFileInChunks: UploadService.processFileInChunks
+      }).catch(error => {
+        console.error(`[ERROR] Failed to queue job ${job.id}:`, error);
+        UploadJob.update(
+          {
+            status: 'failed',
+            error_message: `Failed to queue job: ${error.message}`
+          },
+          { where: { id: job.id } }
+        );
+      });
+    }
   } catch (error) {
     console.error(error);
     sendResponse(
