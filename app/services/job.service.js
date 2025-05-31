@@ -3,6 +3,7 @@ const csv = require("fast-csv");
 const db = require("../config/db.config");
 const { Op, Transaction } = require("sequelize");
 const readline = require('readline');
+const processMonitor = require('../utils/processMonitor');
 
 const CHUNK_SIZE = 10000;
 const MAX_RETRIES = 3;
@@ -361,7 +362,18 @@ const processFileInChunks = async (filePath, jobId, filename) => {
   let processedRecords = 0;
   const startTime = Date.now();
 
+  // Start monitoring for file processing
+  const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
+  const logPath = `./logs/processing_${jobId}_${timestamp}.csv`;
+  
   try {
+    // Start monitoring
+    processMonitor.startMonitoring({
+      logFilePath: logPath,
+      intervalSeconds: 2
+    });
+    console.log(`[MONITORING] Started monitoring file processing. Log will be saved to: ${logPath}`);
+
     // Parse CSV file
     const { records, failedRecords } = await validateAndParseCSV(filePath);
     totalRecords = records.length + failedRecords.length;
@@ -432,16 +444,7 @@ const processFileInChunks = async (filePath, jobId, filename) => {
     // Get final counts
     const finalCount = await db.blacklist.count();
     const uniqueDomains = finalCount - initialCount;
-    const duplicateDomains = processedRecords - uniqueDomains; // Only count actual duplicates, not failed records
-
-    console.log("[INFO] Processing complete:");
-    console.log("[INFO] Initial blacklist count:", initialCount);
-    console.log("[INFO] Final blacklist count:", finalCount);
-    console.log("[INFO] Total records processed:", processedRecords);
-    console.log("[INFO] Unique domains inserted:", uniqueDomains);
-    console.log("[INFO] Duplicate domains skipped:", duplicateDomains);
-    console.log("[INFO] Failed records:", failedRecords.length);
-    console.log("[INFO] Actual new domains in database:", finalCount - initialCount);
+    const duplicateDomains = processedRecords - uniqueDomains;
 
     // Prepare completion message
     let completionMessage = `Successfully processed ${totalRecords} records | `;
@@ -523,6 +526,10 @@ const processFileInChunks = async (filePath, jobId, filename) => {
     });
 
     throw error;
+  } finally {
+    // Stop monitoring
+    processMonitor.stopMonitoring();
+    console.log('[MONITORING] Stopped monitoring file processing');
   }
 }
 
