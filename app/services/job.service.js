@@ -364,7 +364,7 @@ const processFileInChunks = async (filePath, jobId, filename) => {
 
   // Start monitoring for file processing
   const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
-  const logPath = `./logs/processing_${jobId}_${timestamp}.csv`;
+  const logPath = `./logs/processing_${filename}_${jobId}_${timestamp}.csv`;
   
   try {
     // Start monitoring
